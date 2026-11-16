@@ -1,0 +1,4 @@
+# 공통 비교·벤치마크용 products 테이블 (협약 7.1). id는 적지 않아도 맨 앞에 자동으로 붙는다.
+# 형식 : 컬럼이름 int  또는  컬럼이름 string 최대UTF-8바이트수
+name string 32
+price int
