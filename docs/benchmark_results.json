@@ -1,0 +1,260 @@
+{
+  "machine": {
+    "cpu": "Intel(R) Core(TM) i5-8259U CPU @ 2.30GHz",
+    "memoryBytes": 8589934592,
+    "platform": "macOS-15.7.7-x86_64-i386-64bit-Mach-O"
+  },
+  "sourceSha256": "30455d66e3c2c773c9da8d41314f4eb3a5ef511997e221dedb4e9da3f9879c82",
+  "runs": [
+    {
+      "timestamp": "2026-11-16T11:52:45.166803Z",
+      "records": 100,
+      "dataDir": "/var/folders/8y/6w3pfv896rg984r6qx0027580000gn/T/mini-dbms-bench-17974716161925039845",
+      "loadMode": "sql",
+      "repeats": 1,
+      "warmups": 2,
+      "randomQueries": 3,
+      "seed": 42,
+      "recordBytes": 44,
+      "headerBytes": 44,
+      "environment": {
+        "javaVersion": "21.0.11",
+        "osVersion": "15.7.7",
+        "os": "Mac OS X",
+        "architecture": "x86_64",
+        "processors": 8,
+        "build": "./mvnw package, release 21",
+        "maxHeapBytes": 536870912,
+        "javaVendor": "Microsoft"
+      },
+      "loadMs": 22.873233,
+      "rebuildMs": 5.302053,
+      "scanOpenMs": 2.94102,
+      "tableBytes": 4444,
+      "measurements": [
+        {
+          "scenario": "first",
+          "path": "INDEX_ID",
+          "accessPath": "INDEX",
+          "sampleCount": 1,
+          "rowCount": 1,
+          "meanMs": 0.111442,
+          "medianMs": 0.111442,
+          "p95Ms": 0.111442,
+          "samplesNs": [
+            111442
+          ],
+          "ratio": 1.0
+        },
+        {
+          "scenario": "first",
+          "path": "SCAN_ID",
+          "accessPath": "FULL_SCAN",
+          "sampleCount": 1,
+          "rowCount": 1,
+          "meanMs": 0.12035,
+          "medianMs": 0.12035,
+          "p95Ms": 0.12035,
+          "samplesNs": [
+            120350
+          ],
+          "ratio": 1.0799339566770159
+        },
+        {
+          "scenario": "first",
+          "path": "SCAN_NAME",
+          "accessPath": "FULL_SCAN",
+          "sampleCount": 1,
+          "rowCount": 1,
+          "meanMs": 0.651364,
+          "medianMs": 0.651364,
+          "p95Ms": 0.651364,
+          "samplesNs": [
+            651364
+          ],
+          "ratio": 5.844869977207876
+        },
+        {
+          "scenario": "middle",
+          "path": "INDEX_ID",
+          "accessPath": "INDEX",
+          "sampleCount": 1,
+          "rowCount": 1,
+          "meanMs": 0.107045,
+          "medianMs": 0.107045,
+          "p95Ms": 0.107045,
+          "samplesNs": [
+            107045
+          ],
+          "ratio": 1.0
+        },
+        {
+          "scenario": "middle",
+          "path": "SCAN_ID",
+          "accessPath": "FULL_SCAN",
+          "sampleCount": 1,
+          "rowCount": 1,
+          "meanMs": 0.643096,
+          "medianMs": 0.643096,
+          "p95Ms": 0.643096,
+          "samplesNs": [
+            643096
+          ],
+          "ratio": 6.007716380961278
+        },
+        {
+          "scenario": "middle",
+          "path": "SCAN_NAME",
+          "accessPath": "FULL_SCAN",
+          "sampleCount": 1,
+          "rowCount": 1,
+          "meanMs": 0.838764,
+          "medianMs": 0.838764,
+          "p95Ms": 0.838764,
+          "samplesNs": [
+            838764
+          ],
+          "ratio": 7.835620533420523
+        },
+        {
+          "scenario": "last",
+          "path": "INDEX_ID",
+          "accessPath": "INDEX",
+          "sampleCount": 1,
+          "rowCount": 1,
+          "meanMs": 0.071242,
+          "medianMs": 0.071242,
+          "p95Ms": 0.071242,
+          "samplesNs": [
+            71242
+          ],
+          "ratio": 1.0
+        },
+        {
+          "scenario": "last",
+          "path": "SCAN_ID",
+          "accessPath": "FULL_SCAN",
+          "sampleCount": 1,
+          "rowCount": 1,
+          "meanMs": 0.282708,
+          "medianMs": 0.282708,
+          "p95Ms": 0.282708,
+          "samplesNs": [
+            282708
+          ],
+          "ratio": 3.9682771398893912
+        },
+        {
+          "scenario": "last",
+          "path": "SCAN_NAME",
+          "accessPath": "FULL_SCAN",
+          "sampleCount": 1,
+          "rowCount": 1,
+          "meanMs": 0.319226,
+          "medianMs": 0.319226,
+          "p95Ms": 0.319226,
+          "samplesNs": [
+            319226
+          ],
+          "ratio": 4.480868027287275
+        },
+        {
+          "scenario": "missing",
+          "path": "INDEX_ID",
+          "accessPath": "INDEX",
+          "sampleCount": 1,
+          "rowCount": 0,
+          "meanMs": 0.019536,
+          "medianMs": 0.019536,
+          "p95Ms": 0.019536,
+          "samplesNs": [
+            19536
+          ],
+          "ratio": 1.0
+        },
+        {
+          "scenario": "missing",
+          "path": "SCAN_ID",
+          "accessPath": "FULL_SCAN",
+          "sampleCount": 1,
+          "rowCount": 0,
+          "meanMs": 0.212505,
+          "medianMs": 0.212505,
+          "p95Ms": 0.212505,
+          "samplesNs": [
+            212505
+          ],
+          "ratio": 10.877610565110565
+        },
+        {
+          "scenario": "missing",
+          "path": "SCAN_NAME",
+          "accessPath": "FULL_SCAN",
+          "sampleCount": 1,
+          "rowCount": 0,
+          "meanMs": 0.386235,
+          "medianMs": 0.386235,
+          "p95Ms": 0.386235,
+          "samplesNs": [
+            386235
+          ],
+          "ratio": 19.770423832923832
+        },
+        {
+          "scenario": "random",
+          "path": "INDEX_ID",
+          "accessPath": "INDEX",
+          "sampleCount": 3,
+          "rowCount": 1,
+          "meanMs": 0.090644,
+          "medianMs": 0.075897,
+          "p95Ms": 0.125554,
+          "samplesNs": [
+            125554,
+            75897,
+            70481
+          ],
+          "ratio": 1.0
+        },
+        {
+          "scenario": "random",
+          "path": "SCAN_ID",
+          "accessPath": "FULL_SCAN",
+          "sampleCount": 3,
+          "rowCount": 1,
+          "meanMs": 0.19785333333333335,
+          "medianMs": 0.204595,
+          "p95Ms": 0.21635,
+          "samplesNs": [
+            216350,
+            204595,
+            172615
+          ],
+          "ratio": 2.6956928468845933
+        },
+        {
+          "scenario": "random",
+          "path": "SCAN_NAME",
+          "accessPath": "FULL_SCAN",
+          "sampleCount": 3,
+          "rowCount": 1,
+          "meanMs": 0.297347,
+          "medianMs": 0.278781,
+          "p95Ms": 0.356308,
+          "samplesNs": [
+            278781,
+            256952,
+            356308
+          ],
+          "ratio": 3.673149136329499
+        }
+      ],
+      "randomIds": [
+        31,
+        64,
+        49
+      ],
+      "jsonPreparationMs": 4.937502
+    }
+  ]
+}

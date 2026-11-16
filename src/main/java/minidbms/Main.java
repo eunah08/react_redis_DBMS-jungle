@@ -61,6 +61,6 @@ public final class Main {
         System.err.println("  java -jar target/mini-dbms.jar cli [--data-dir 경로] [--json] SQL파일");
         System.err.println("  java -jar target/mini-dbms.jar server --host 127.0.0.1 --port 8080"
                 + " --workers 4 --queue 128 --data-dir data");
-        System.err.println("  java -jar target/mini-dbms.jar bench --records 1000000");
+        System.err.println("  java -jar target/mini-dbms.jar bench --records 100 --repeats 1 --random-queries 3");
     }
 }

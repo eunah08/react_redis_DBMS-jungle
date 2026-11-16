@@ -1,61 +1,110 @@
 package minidbms.server;
 
+import java.util.Objects;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
- * 직접 만든 스레드 풀. 공용 작업 큐에서 워커 스레드들이 작업을 꺼내 반복 실행한다. (협약 9.3)
- * 요청마다 새 스레드를 만들지 않는다. HttpServer.setExecutor(pool)로 서버에 연결한다.
+ * 고정 워커와 유한 큐로 구성한 직접 구현 스레드 풀.
+ * 승인한 작업은 종료 시 모두 마치며, 큐 포화와 종료 이후 제출은 즉시 거절한다.
  */
 public final class DbWorkerPool implements Executor {
-
-    /** 작업 큐 크기 기본값. (협약 9.3) */
     public static final int DEFAULT_QUEUE_CAPACITY = 128;
+    private static final long SHUTDOWN_POLL_MS = 100;
 
     private final int workerCount;
     private final int queueCapacity;
+    private final BlockingQueue<Runnable> tasks;
+    private final Thread[] workers;
+    private final Consumer<Runnable> rejectionHandler;
+    private final Object lifecycle = new Object();
+    private volatile boolean isAccepting = true;
 
-    /**
-     * 스레드 풀을 만들고 워커를 띄운다.
-     *
-     * @param workerCount   워커 스레드 수. 기본값은 CPU 수다
-     * @param queueCapacity 작업 큐 크기
-     */
+    /** 양수 크기의 풀을 생성하고 워커를 시작한다. 작업 스레드는 재사용한다. */
     public DbWorkerPool(int workerCount, int queueCapacity) {
+        this(workerCount, queueCapacity, task -> {
+            throw new RejectedExecutionException("[execute] 작업 큐가 가득 찼거나 종료 중입니다");
+        });
+    }
+
+    DbWorkerPool(int workerCount, int queueCapacity, Consumer<Runnable> rejectionHandler) {
+        if (workerCount < 1 || queueCapacity < 1) {
+            throw new IllegalArgumentException("[DbWorkerPool] 워커와 큐 크기는 양수여야 합니다");
+        }
+        this.rejectionHandler = Objects.requireNonNull(rejectionHandler);
         this.workerCount = workerCount;
         this.queueCapacity = queueCapacity;
-        // TODO(이니셜): BlockingQueue<Runnable>과 워커 스레드 만들기 (협약 9.3)
+        tasks = new ArrayBlockingQueue<>(queueCapacity);
+        workers = new Thread[workerCount];
+        for (int index = 0; index < workerCount; index++) {
+            workers[index] = new Thread(this::work, "minidb-worker-" + index);
+            workers[index].start();
+        }
     }
 
     /**
-     * 작업을 큐에 넣는다. 큐가 가득 차면 기다리지 않고 거절을 알린다. (503)
-     * 거절 방법은 각자 설계하고 docs/implementation_notes.md에 쓴다.
-     *
-     * @param task 실행할 작업
+     * 큐에 작업을 추가한다. 기다리지 않는다.
+     * @throws RejectedExecutionException 포화 상태 또는 종료 중일 때
      */
     @Override
     public void execute(Runnable task) {
-        // TODO(이니셜): 협약 9.3
-        throw new UnsupportedOperationException("[execute] 아직 구현되지 않았습니다");
+        Objects.requireNonNull(task, "task");
+        boolean isAccepted;
+        synchronized (lifecycle) { isAccepted = isAccepting && tasks.offer(task); }
+        if (!isAccepted) { rejectionHandler.accept(task); }
+    }
+
+    private void work() {
+        while (isAccepting || !tasks.isEmpty()) {
+            try {
+                Runnable task = tasks.poll(SHUTDOWN_POLL_MS, TimeUnit.MILLISECONDS);
+                if (task != null) { runTask(task); }
+            } catch (InterruptedException failure) {
+                // 승인된 작업이 남으면 인터럽트를 복원해 poll이 반복 실패하지 않게 한다.
+                if (!isAccepting && tasks.isEmpty()) { return; }
+            }
+        }
+    }
+
+    private void runTask(Runnable task) {
+        try {
+            task.run();
+        } catch (Throwable failure) {
+            System.err.println("[DbWorkerPool] 작업 실패: " + failure.getClass().getSimpleName());
+        }
     }
 
     /**
-     * 새 작업을 받지 않고, 남은 작업을 마친 뒤 워커를 멈춘다.
+     * 새 작업 제출을 중단하고 승인된 작업 완료 후 모든 워커를 join한다.
+     * 여러 번 호출해도 된다. 워커 내부에서의 호출은 자기 join을 피하려고 거부한다.
      */
     public void shutdown() {
-        // TODO(이니셜): 협약 9.3
-        throw new UnsupportedOperationException("[shutdown] 아직 구현되지 않았습니다");
+        for (Thread worker : workers) {
+            if (worker == Thread.currentThread()) {
+                throw new IllegalStateException("[shutdown] 워커 안에서 종료를 기다릴 수 없습니다");
+            }
+        }
+        synchronized (lifecycle) { isAccepting = false; }
+        boolean isInterrupted = false;
+        for (Thread worker : workers) {
+            while (worker.isAlive()) {
+                try { worker.join(); }
+                catch (InterruptedException failure) { isInterrupted = true; }
+            }
+        }
+        if (isInterrupted) { Thread.currentThread().interrupt(); }
     }
 
-    /**
-     * @return 워커 스레드 수
-     */
+    /** @return 고정 워커 수. 상태 변경 없음 */
     public int getWorkerCount() {
         return workerCount;
     }
 
-    /**
-     * @return 작업 큐 크기
-     */
+    /** @return 작업 큐 최대 크기. 상태 변경 없음 */
     public int getQueueCapacity() {
         return queueCapacity;
     }

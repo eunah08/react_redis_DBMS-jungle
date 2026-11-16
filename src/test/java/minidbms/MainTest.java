@@ -10,12 +10,12 @@ import org.junit.jupiter.api.Test;
 class MainTest {
 
     @Test
-    void 인자가_없으면_사용법을_보여주고_1을_돌려준다() {
+    void missingCommandReturnsFailure() {
         assertEquals(1, Main.runCommand(new String[0]));
     }
 
     @Test
-    void 모르는_명령이면_1을_돌려준다() {
+    void unknownCommandReturnsFailure() {
         assertEquals(1, Main.runCommand(new String[] {"unknown"}));
     }
 }
