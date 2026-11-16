@@ -181,7 +181,8 @@ SQL 문자열은 `토큰화 → 구문 검증 → Statement 생성 → (engine) 
   완성하고, JSON 변환과 응답 전송은 락을 푼 뒤 서버에서 한다. 결과 `DbResult`는 만든 뒤 바뀌지 않는다.
 - **잠금 순서** : 한 문장은 한 테이블만 잠그므로 두 테이블을 동시에 잠그는 경로가 없고 교착 상태가 생기지 않는다.
   나중에 여러 테이블을 잠그는 문장(JOIN 등)을 넣으면 테이블 이름 사전순으로 잠가야 한다(협약 9.3).
-  `ReentrantReadWriteLock`은 비공정 모드다. 읽기가 계속 이어지면 쓰기가 늦어질 수 있다(알려진 제한).
+  `ReentrantReadWriteLock`은 비공정 모드다. 다만 Java의 비공정 모드도 대기 줄 맨 앞이 쓰기이면 새 읽기를
+  기다리게 하므로, 읽기가 계속 들어와도 쓰기가 끝없이 밀리지는 않는다. 도착 순서를 엄격히 지키지는 않는다.
 - **API 형식**
 
   | 요청 | 응답 |
@@ -230,7 +231,9 @@ SQL 문자열은 `토큰화 → 구문 검증 → Statement 생성 → (engine) 
 - 데이터 디렉터리 하나는 프로세스 하나만 쓴다(파일 잠금을 걸지 않았다).
 - 인덱스는 `WHERE id = 정수` 한 가지에만 쓴다. 인덱스는 메모리에만 있어 재시작할 때 파일 전체를 읽어 다시 만든다.
 - 선형 탐색은 `SELECT`의 결과 행을 모두 메모리에 모은다. 행이 아주 많은 `SELECT *`는 힙을 많이 쓴다.
-- 소수의 쓰기 요청이 계속 이어지는 읽기 때문에 늦어질 수 있다(비공정 읽기·쓰기 락).
+- 한 테이블의 INSERT는 쓰기 락으로 한 번에 하나씩이다. 100만 건 선형 탐색(약 0.5초)이 읽기 락을 잡은 동안 그 테이블의 INSERT는 기다린다.
+- 인덱스 등록 실패 뒤 파일을 되돌리는 경로(`registerIndex` → `rollbackAppend`)는 정상 흐름에서 일어나지 않아
+  엔진 수준 테스트가 없다. `TableFile.rollbackAppend` 자체만 단위 테스트했다.
 - 큐 포화 때의 503은 접속 수락 스레드에서 만들어 느린 클라이언트에 약하다(4장).
 - 서버 로그는 JDK 기본 인코딩으로 stdout/stderr에 쓴다. Windows 콘솔이 아닌 곳으로 리다이렉트하면 한글이 깨져 보일 수 있다.
 
@@ -244,13 +247,22 @@ SQL 문자열은 `토큰화 → 구문 검증 → Statement 생성 → (engine) 
 - 정수 컬럼은 `0 ~ 2147483647`. INSERT의 음수·상한 초과는 `INVALID_VALUE`. WHERE의 상한 초과·음수는 **빈 결과**(오류 아님).
 - WHERE의 타입 불일치(`WHERE id = 'a'`, `WHERE name = 5`)는 `INVALID_VALUE`.
 - `SELECT name, name`처럼 결과 컬럼이 겹치면 `SQL_SYNTAX`(JSON 키 중복 방지).
+- 테이블 이름은 소문자·숫자·밑줄 **1~64자**. 더 길면 파일을 찾지 않고 `UNKNOWN_TABLE`(운영체제 경로 길이 한도 회피).
+- CLI 표 출력에서 줄바꿈·탭·제어 문자는 `\n`, `\t`, `\u0001`처럼 보이게 그린다(저장 값은 그대로, `--json`은 원래 이스케이프).
+- API는 본문을 먼저 읽은 뒤 Content-Type을 검사한다. 안 읽고 400을 보내면 큰 본문에서 연결이 끊겨 응답을 못 받기 때문이다.
 - CLI : 세미콜론뿐인 문장·주석뿐인 파일은 건너뛰고 종료 코드 0, API : `;` 하나는 `SQL_SYNTAX`.
 - INSERT 검사 순서 : 없는 컬럼 → id 지정 → 값 개수 → 컬럼 중복 → 타입·범위·길이 → 빠진 필수 컬럼.
 - 새 공개 이름 : `DbEngine.execute(String, boolean)`(인덱스 사용 여부 지정), `execute(Statement, boolean)`(파싱 건너뛰기),
   `DbEngine.getIndexSize/getIndexHeight/setSelectHook`(점검·테스트용), `TableFile.rollbackAppend/isValidTableName`,
   `RowCursor`(`Iterator<StoredRow>` + `AutoCloseable`), `SqlSplitter.splitStatements`, `BPlusTree.keysInLeafOrder/checkInvariants`,
   `DbWorkerPool.awaitTermination/isRejectingCurrentTask/getQueuedCount/getRejectedCount`, `SqlExecutor`,
-  패키지 `minidbms.json`(`JsonReader`, `JsonWriter`, `JsonParseException`).
+  `DbHttpServer(SqlExecutor, DbWorkerPool, InetSocketAddress)`, 패키지 `minidbms.json`(`JsonReader`, `JsonWriter`, `JsonParseException`).
+
+협약 4장 코드 규칙 점검 (2026-11-16)
+- 함수 인자 3개 이하, 함수 30줄 이하, 한 글자 이름은 `i`·`j`만 : 스크립트로 `src/main` 전체를 검사해 맞췄다.
+  (`catch`의 `e` → `exception`, `err` → `errorOutput`, 인자가 많던 함수는 `CliOutput`·`KeyRange`·`Phase`·`ReportRow`·`NumberRange` 레코드로 묶음)
+- 예외 : 레코드(`Statement`, `SelectPlan`, `BenchmarkOptions` 등)의 구성 요소와 `DbResult`의 private 생성자(7개)는
+  "여러 값을 객체 하나로 묶은 것" 자체라 그대로 두었다. `DbResult`는 정적 팩토리 3개(`forInsert`/`forSelect`/`forError`)로만 만든다.
 
 ## 7. 핵심 로직을 설명할 때 참고할 파일
 

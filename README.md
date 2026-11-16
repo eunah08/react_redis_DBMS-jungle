@@ -45,7 +45,7 @@ SELECT * FROM products WHERE id = 1;            -- B+ 트리 인덱스 사용
 SELECT * FROM products WHERE name = '키보드';    -- 선형 탐색
 ```
 
-- 문장은 세미콜론(`;`)으로 끝나야 한다. 키워드 대소문자는 구분하지 않고 테이블·컬럼 이름은 소문자다.
+- 문장은 세미콜론(`;`)으로 끝나야 한다. 키워드 대소문자는 구분하지 않고 테이블·컬럼 이름은 소문자다(테이블 이름은 64자 이하).
 - `id`는 테이블마다 1부터 자동으로 부여된다(INSERT에 적으면 `INVALID_VALUE`). 재시작해도 이어진다.
 - `products`는 `name`(문자열, 최대 32바이트), `price`(0 이상 정수)다. 스키마는 `data/<테이블>.schema`에 적는다
   (`name string 32` / `price int`). `CREATE TABLE`은 지원하지 않는다.
