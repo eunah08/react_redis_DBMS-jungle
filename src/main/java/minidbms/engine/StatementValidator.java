@@ -67,25 +67,29 @@ final class StatementValidator {
         }
         Condition condition = statement.condition();
         int conditionIndex = findColumnIndex(schema, condition.columnName());
-        Column column = schema.columns().get(conditionIndex);
-        return planCondition(columnNames, columnIndexes, conditionIndex, column, condition.value());
+        Object conditionValue = toConditionValue(schema.columns().get(conditionIndex), condition.value());
+        return new SelectPlan(columnNames, columnIndexes, conditionIndex, conditionValue, conditionValue == null);
     }
 
-    private static SelectPlan planCondition(List<String> columnNames, int[] columnIndexes,
-                                            int conditionIndex, Column column, Object value) {
+    /**
+     * WHERE 값을 컬럼과 비교할 모양(Integer 또는 String)으로 바꾼다.
+     *
+     * @return 비교할 값. 정수 범위를 벗어나 어떤 행과도 같을 수 없으면 null
+     * @throws EngineException 컬럼과 값의 타입이 다르면 INVALID_VALUE
+     */
+    private static Object toConditionValue(Column column, Object value) {
         if (column.type() == ColumnType.STRING) {
             if (!(value instanceof String)) {
                 throw invalid("planSelect", column.columnName() + "은 문자열 컬럼이라 문자열과 비교해야 합니다");
             }
-            return new SelectPlan(columnNames, columnIndexes, conditionIndex, value, false);
+            return value;
         }
         if (!(value instanceof Long) && !(value instanceof BigInteger)) {
             throw invalid("planSelect", column.columnName() + "은 정수 컬럼이라 정수와 비교해야 합니다");
         }
         BigInteger number = toBigInteger(value);
         boolean isOutOfRange = number.bitLength() > Integer.SIZE - 1;
-        Object conditionValue = isOutOfRange ? null : Integer.valueOf(number.intValue());
-        return new SelectPlan(columnNames, columnIndexes, conditionIndex, conditionValue, isOutOfRange);
+        return isOutOfRange ? null : Integer.valueOf(number.intValue());
     }
 
     private static List<Integer> findInsertColumnIndexes(Schema schema, List<String> columnNames) {
@@ -183,7 +187,7 @@ final class StatementValidator {
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
                     .encode(CharBuffer.wrap(text));
             return encoded.remaining();
-        } catch (CharacterCodingException e) {
+        } catch (CharacterCodingException exception) {
             return -1;
         }
     }

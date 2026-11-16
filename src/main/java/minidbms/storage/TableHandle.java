@@ -49,13 +49,13 @@ final class TableHandle {
             TableHandle handle = new TableHandle(schema, tablePath, channel);
             try {
                 handle.prepareFile();
-            } catch (RuntimeException | IOException e) {
+            } catch (RuntimeException | IOException exception) {
                 channel.close();
-                throw e;
+                throw exception;
             }
             return handle;
-        } catch (IOException e) {
-            throw new StorageException("[open] 테이블 파일을 열 수 없습니다: " + tablePath.getFileName(), e);
+        } catch (IOException exception) {
+            throw new StorageException("[open] 테이블 파일을 열 수 없습니다: " + tablePath.getFileName(), exception);
         }
     }
 
@@ -82,8 +82,8 @@ final class TableHandle {
     void close() {
         try {
             channel.close();
-        } catch (IOException e) {
-            throw new StorageException("[close] 테이블 파일을 닫지 못했습니다: " + tablePath.getFileName(), e);
+        } catch (IOException exception) {
+            throw new StorageException("[close] 테이블 파일을 닫지 못했습니다: " + tablePath.getFileName(), exception);
         }
     }
 

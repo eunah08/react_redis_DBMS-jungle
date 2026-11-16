@@ -185,7 +185,7 @@ public final class JsonReader {
         }
         try {
             return new BigDecimal(text.substring(start, index));
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException exception) {
             throw error("숫자를 읽을 수 없습니다");
         }
     }

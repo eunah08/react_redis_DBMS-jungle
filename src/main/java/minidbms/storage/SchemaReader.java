@@ -81,7 +81,7 @@ final class SchemaReader {
             if (maxBytes > 0) {
                 return maxBytes;
             }
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException exception) {
             throw failure(tableName, lineNumber, "최대 바이트 수가 숫자가 아닙니다: " + text);
         }
         throw failure(tableName, lineNumber, "최대 바이트 수는 1 이상이어야 합니다");

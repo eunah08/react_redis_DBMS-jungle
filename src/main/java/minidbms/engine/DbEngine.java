@@ -55,8 +55,8 @@ public final class DbEngine {
         this.tableFile = new TableFile(dataDir);
         try {
             Files.createDirectories(dataDir);
-        } catch (IOException e) {
-            throw new StorageException("[DbEngine] 데이터 디렉터리를 만들 수 없습니다", e);
+        } catch (IOException exception) {
+            throw new StorageException("[DbEngine] 데이터 디렉터리를 만들 수 없습니다", exception);
         }
         loadAllTables();
     }
@@ -87,8 +87,8 @@ public final class DbEngine {
         Statement statement;
         try {
             statement = SqlParser.parseSql(sqlText);
-        } catch (SqlSyntaxException e) {
-            return DbResult.forError(ErrorCode.SQL_SYNTAX, e.getMessage());
+        } catch (SqlSyntaxException exception) {
+            return DbResult.forError(ErrorCode.SQL_SYNTAX, exception.getMessage());
         }
         return execute(statement, isIndexAllowed);
     }
@@ -107,12 +107,12 @@ public final class DbEngine {
                 case INSERT -> executeInsert(table, statement);
                 case SELECT -> executeSelect(table, statement, isIndexAllowed);
             };
-        } catch (EngineException e) {
-            return DbResult.forError(e.getErrorCode(), e.getMessage());
-        } catch (StorageException e) {
-            return DbResult.forError(ErrorCode.INTERNAL_ERROR, e.getMessage());
-        } catch (RuntimeException e) {
-            return DbResult.forError(ErrorCode.INTERNAL_ERROR, "[execute] 예상하지 못한 오류: " + e);
+        } catch (EngineException exception) {
+            return DbResult.forError(exception.getErrorCode(), exception.getMessage());
+        } catch (StorageException exception) {
+            return DbResult.forError(ErrorCode.INTERNAL_ERROR, exception.getMessage());
+        } catch (RuntimeException exception) {
+            return DbResult.forError(ErrorCode.INTERNAL_ERROR, "[execute] 예상하지 못한 오류: " + exception);
         }
     }
 
@@ -174,17 +174,17 @@ public final class DbEngine {
                     loadTableOrMarkBroken(tableName);
                 }
             }
-        } catch (IOException e) {
-            throw new StorageException("[DbEngine] 데이터 디렉터리를 읽을 수 없습니다", e);
+        } catch (IOException exception) {
+            throw new StorageException("[DbEngine] 데이터 디렉터리를 읽을 수 없습니다", exception);
         }
     }
 
     private void loadTableOrMarkBroken(String tableName) {
         try {
             tables.put(tableName, loadTable(tableName));
-        } catch (StorageException e) {
-            System.err.println("[loadAllTables] " + tableName + " 테이블을 열지 못했습니다: " + e.getMessage());
-            tables.put(tableName, TableState.broken(e.getMessage()));
+        } catch (StorageException exception) {
+            System.err.println("[loadAllTables] " + tableName + " 테이블을 열지 못했습니다: " + exception.getMessage());
+            tables.put(tableName, TableState.broken(exception.getMessage()));
         }
     }
 
@@ -200,8 +200,8 @@ public final class DbEngine {
                 index.insertKey(id, storedRow.position());
                 maxId = Math.max(maxId, id);
             }
-        } catch (IllegalArgumentException e) {
-            throw new StorageException("[loadTable] " + tableName + " 파일의 id가 겹쳐 인덱스를 만들 수 없습니다", e);
+        } catch (IllegalArgumentException exception) {
+            throw new StorageException("[loadTable] " + tableName + " 파일의 id가 겹쳐 인덱스를 만들 수 없습니다", exception);
         }
         return new TableState(schema, index, maxId + 1);
     }
@@ -229,8 +229,8 @@ public final class DbEngine {
             }
             try {
                 table = loadTable(tableName);
-            } catch (TableNotFoundException e) {
-                throw new EngineException(ErrorCode.UNKNOWN_TABLE, e.getMessage());
+            } catch (TableNotFoundException exception) {
+                throw new EngineException(ErrorCode.UNKNOWN_TABLE, exception.getMessage());
             }
             tables.put(tableName, table);
             return table;
@@ -276,17 +276,17 @@ public final class DbEngine {
     private void registerIndex(TableState table, int id, long position) {
         try {
             table.index().insertKey(id, position);
-        } catch (RuntimeException e) {
+        } catch (RuntimeException exception) {
             undoAppend(table, position);
             throw new EngineException(ErrorCode.INTERNAL_ERROR,
-                    "[executeInsert] 인덱스 등록에 실패해 행을 되돌렸습니다: " + e.getMessage());
+                    "[executeInsert] 인덱스 등록에 실패해 행을 되돌렸습니다: " + exception.getMessage());
         }
     }
 
     private void undoAppend(TableState table, long position) {
         try {
             tableFile.rollbackAppend(table.schema().tableName(), position);
-        } catch (RuntimeException e) {
+        } catch (RuntimeException exception) {
             table.markBroken("인덱스 등록 실패 뒤 파일을 되돌리지 못했습니다. 다시 시작해 복구해야 합니다");
             throw new EngineException(ErrorCode.INTERNAL_ERROR, "[executeInsert] " + table.failureMessage());
         }

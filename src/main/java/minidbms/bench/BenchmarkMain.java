@@ -49,8 +49,8 @@ public final class BenchmarkMain {
         BenchmarkOptions options;
         try {
             options = BenchmarkOptions.parse(args);
-        } catch (IllegalArgumentException e) {
-            System.err.println(e.getMessage());
+        } catch (IllegalArgumentException exception) {
+            System.err.println(exception.getMessage());
             System.err.println(USAGE);
             return EXIT_FAILURE;
         }
@@ -60,8 +60,8 @@ public final class BenchmarkMain {
                 return 0;
             }
             return runWithDataDir(options, out);
-        } catch (IOException | StorageException | IllegalStateException | IllegalArgumentException e) {
-            System.err.println("[run] 벤치마크 실패: " + e.getMessage());
+        } catch (IOException | StorageException | IllegalStateException | IllegalArgumentException exception) {
+            System.err.println("[run] 벤치마크 실패: " + exception.getMessage());
             return EXIT_FAILURE;
         }
     }

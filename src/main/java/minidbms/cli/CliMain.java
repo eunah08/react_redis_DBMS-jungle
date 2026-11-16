@@ -47,67 +47,68 @@ public final class CliMain {
      */
     public static int run(String[] args) {
         PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8);
-        PrintStream err = new PrintStream(new FileOutputStream(FileDescriptor.err), true, StandardCharsets.UTF_8);
-        return run(args, out, err);
+        PrintStream errorOutput = new PrintStream(new FileOutputStream(FileDescriptor.err), true, StandardCharsets.UTF_8);
+        return run(args, out, errorOutput);
     }
 
     /**
      * 출력 위치를 정해 cli 명령을 실행한다. 테스트가 출력을 모을 때 쓴다.
      *
      * @param args "cli" 뒤의 인자
-     * @param out  성공 결과를 쓸 곳
-     * @param err  오류를 쓸 곳
+     * @param out         성공 결과를 쓸 곳
+     * @param errorOutput 오류를 쓸 곳
      * @return 모두 성공하면 0, 첫 오류에서 멈추면 1
      */
-    public static int run(String[] args, PrintStream out, PrintStream err) {
+    public static int run(String[] args, PrintStream out, PrintStream errorOutput) {
         CliOptions options;
         try {
             options = parseOptions(args);
-        } catch (IllegalArgumentException e) {
-            err.println(e.getMessage());
-            err.println("사용법: java -jar target/mini-dbms.jar cli [--data-dir 경로] [--json] SQL파일");
+        } catch (IllegalArgumentException exception) {
+            errorOutput.println(exception.getMessage());
+            errorOutput.println("사용법: java -jar target/mini-dbms.jar cli [--data-dir 경로] [--json] SQL파일");
             return EXIT_FAILURE;
         }
         String sqlText;
         try {
             sqlText = readSqlFile(options.sqlFile());
-        } catch (IOException e) {
-            err.println(e.getMessage());
+        } catch (IOException exception) {
+            errorOutput.println(exception.getMessage());
             return EXIT_FAILURE;
         }
-        return executeFile(options, SqlSplitter.splitStatements(sqlText), out, err);
+        CliOutput output = new CliOutput(out, errorOutput, options.isJson());
+        return executeFile(options.dataDir(), SqlSplitter.splitStatements(sqlText), output);
     }
 
-    private static int executeFile(CliOptions options, List<String> statements, PrintStream out, PrintStream err) {
+    private static int executeFile(Path dataDir, List<String> statements, CliOutput output) {
         DbEngine engine;
         try {
-            engine = new DbEngine(options.dataDir());
-        } catch (StorageException e) {
-            err.println(e.getMessage());
+            engine = new DbEngine(dataDir);
+        } catch (StorageException exception) {
+            output.errorOutput().println(exception.getMessage());
             return EXIT_FAILURE;
         }
         try {
-            return executeStatements(engine, options, statements, out, err);
+            return executeStatements(engine, statements, output);
         } finally {
             engine.close();
         }
     }
 
-    private static int executeStatements(DbEngine engine, CliOptions options, List<String> statements,
-                                         PrintStream out, PrintStream err) {
+    private static int executeStatements(DbEngine engine, List<String> statements, CliOutput output) {
         for (int i = 0; i < statements.size(); i++) {
             DbResult result = engine.execute(statements.get(i));
             if (result.isError()) {
-                printError(result, i + 1, options.isJson(), err);
+                printError(result, i + 1, output);
                 return EXIT_FAILURE;
             }
-            printResult(result, options.isJson(), out);
+            printResult(result, output);
         }
         return EXIT_SUCCESS;
     }
 
-    private static void printResult(DbResult result, boolean isJson, PrintStream out) {
-        if (isJson) {
+    private static void printResult(DbResult result, CliOutput output) {
+        PrintStream out = output.out();
+        if (output.isJson()) {
             out.println(JsonWriter.toJson(result));
         } else if (result.getKind() == DbResult.Kind.INSERT) {
             out.println("inserted id=" + result.getInsertedId());
@@ -117,13 +118,14 @@ public final class CliMain {
         out.flush();
     }
 
-    private static void printError(DbResult result, int statementNumber, boolean isJson, PrintStream err) {
-        if (isJson) {
-            err.println(JsonWriter.errorToJson(result.getErrorCode()));
+    private static void printError(DbResult result, int statementNumber, CliOutput output) {
+        PrintStream errorOutput = output.errorOutput();
+        if (output.isJson()) {
+            errorOutput.println(JsonWriter.errorToJson(result.getErrorCode()));
         } else {
-            err.println("오류 " + result.getErrorCode() + " (" + statementNumber + "번째 문장) " + result.getMessage());
+            errorOutput.println("오류 " + result.getErrorCode() + " (" + statementNumber + "번째 문장) " + result.getMessage());
         }
-        err.flush();
+        errorOutput.flush();
     }
 
     private static CliOptions parseOptions(String[] args) {
@@ -156,10 +158,10 @@ public final class CliMain {
         byte[] bytes;
         try {
             bytes = Files.readAllBytes(sqlFile);
-        } catch (NoSuchFileException e) {
-            throw new IOException("[readSqlFile] SQL 파일이 없습니다: " + sqlFile, e);
-        } catch (IOException e) {
-            throw new IOException("[readSqlFile] SQL 파일을 읽을 수 없습니다: " + sqlFile, e);
+        } catch (NoSuchFileException exception) {
+            throw new IOException("[readSqlFile] SQL 파일이 없습니다: " + sqlFile, exception);
+        } catch (IOException exception) {
+            throw new IOException("[readSqlFile] SQL 파일을 읽을 수 없습니다: " + sqlFile, exception);
         }
         try {
             String text = StandardCharsets.UTF_8.newDecoder()
@@ -167,11 +169,15 @@ public final class CliMain {
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
                     .decode(ByteBuffer.wrap(bytes)).toString();
             return text.isEmpty() || text.charAt(0) != BYTE_ORDER_MARK ? text : text.substring(1);
-        } catch (CharacterCodingException e) {
-            throw new IOException("[readSqlFile] SQL 파일이 UTF-8이 아닙니다: " + sqlFile, e);
+        } catch (CharacterCodingException exception) {
+            throw new IOException("[readSqlFile] SQL 파일이 UTF-8이 아닙니다: " + sqlFile, exception);
         }
     }
 
     private record CliOptions(Path dataDir, boolean isJson, Path sqlFile) {
+    }
+
+    /** 결과와 오류를 어디에, 어떤 형식으로 쓸지. */
+    private record CliOutput(PrintStream out, PrintStream errorOutput, boolean isJson) {
     }
 }

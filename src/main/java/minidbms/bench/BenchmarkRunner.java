@@ -191,46 +191,57 @@ final class BenchmarkRunner {
         if (recordCount < 1) {
             return lines;
         }
-        Random random = new Random(options.seed() ^ recordCount);
-        List<Long> indexTimes = new ArrayList<>();
-        List<Long> linearTimes = new ArrayList<>();
-        for (int i = 0; i < Math.max(options.randomCount(), options.linearRandomCount()); i++) {
-            int id = random.nextInt(recordCount) + 1;
-            Query index = new Query("무작위 id (인덱스)", "SELECT * FROM products WHERE id = " + id + ";",
-                    true, AccessPath.INDEX);
-            Query linear = new Query("무작위 id (선형)",
-                    "SELECT * FROM products WHERE name = '" + productName(id) + "';", true, AccessPath.FULL_SCAN);
-            measureRandomPair(i, index, linear, indexTimes, linearTimes);
-        }
+        List<Integer> ids = randomIds(recordCount);
+        List<Long> indexTimes = timeQueries(ids.subList(0, options.randomCount()), true);
+        List<Long> linearTimes = timeQueries(ids.subList(0, options.linearRandomCount()), false);
         addRandomRows(lines, indexTimes, linearTimes);
         return lines;
     }
 
-    private void measureRandomPair(int round, Query index, Query linear, List<Long> indexTimes, List<Long> linearTimes) {
-        List<List<Object>> expected = null;
-        if (round < options.randomCount()) {
-            long start = System.nanoTime();
-            DbResult result = run(index);
-            indexTimes.add(System.nanoTime() - start);
-            expected = checkResult(index, result, null);
+    /** 시드를 고정한 무작위 id 목록. 인덱스와 선형이 앞에서부터 같은 id를 쓴다. */
+    private List<Integer> randomIds(int recordCount) {
+        Random random = new Random(options.seed() ^ recordCount);
+        int count = Math.max(options.randomCount(), options.linearRandomCount());
+        List<Integer> ids = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            ids.add(random.nextInt(recordCount) + 1);
         }
-        if (round < options.linearRandomCount()) {
+        return ids;
+    }
+
+    /** id마다 한 번씩 조회해 시간을 잰다. 선형 경로는 측정 밖에서 인덱스로 찾은 행과 같은지 확인한다. */
+    private List<Long> timeQueries(List<Integer> ids, boolean isIndexPath) {
+        List<Long> elapsedNanos = new ArrayList<>(ids.size());
+        for (int id : ids) {
+            Query query = isIndexPath ? randomIndexQuery(id) : randomLinearQuery(id);
             long start = System.nanoTime();
-            DbResult result = run(linear);
-            linearTimes.add(System.nanoTime() - start);
-            checkResult(linear, result, expected);
+            DbResult result = run(query);
+            elapsedNanos.add(System.nanoTime() - start);
+            List<List<Object>> expectedRows = isIndexPath ? null : run(randomIndexQuery(id)).getRows();
+            checkResult(query, result, expectedRows);
         }
+        return elapsedNanos;
+    }
+
+    private static Query randomIndexQuery(int id) {
+        return new Query("무작위 id (인덱스)", "SELECT * FROM products WHERE id = " + id + ";", true, AccessPath.INDEX);
+    }
+
+    private static Query randomLinearQuery(int id) {
+        return new Query("무작위 id (선형)", "SELECT * FROM products WHERE name = '" + productName(id) + "';",
+                true, AccessPath.FULL_SCAN);
     }
 
     private void addRandomRows(List<String> lines, List<Long> indexTimes, List<Long> linearTimes) {
         QueryStats indexStats = indexTimes.isEmpty() ? null : QueryStats.summarize(indexTimes);
         if (indexStats != null) {
-            lines.add(row("무작위 id " + indexTimes.size() + "개", "인덱스", indexStats, 1.0));
+            lines.add(new ReportRow("무작위 id " + indexTimes.size() + "개", "인덱스", indexStats, 1.0).toMarkdown());
         }
         if (!linearTimes.isEmpty()) {
             QueryStats linearStats = QueryStats.summarize(linearTimes);
             double ratio = indexStats == null ? Double.NaN : linearStats.medianMs() / indexStats.medianMs();
-            lines.add(row("무작위 id " + linearTimes.size() + "개", "`WHERE name = ?` (선형)", linearStats, ratio));
+            lines.add(new ReportRow("무작위 id " + linearTimes.size() + "개", "`WHERE name = ?` (선형)",
+                    linearStats, ratio).toMarkdown());
         }
     }
 
@@ -239,15 +250,10 @@ final class BenchmarkRunner {
         QueryStats base = QueryStats.summarize(timings.get(0));
         for (int i = 0; i < queries.size(); i++) {
             QueryStats stats = QueryStats.summarize(timings.get(i));
-            lines.add(row(target, queries.get(i).label(), stats, stats.medianMs() / base.medianMs()));
+            double ratio = stats.medianMs() / base.medianMs();
+            lines.add(new ReportRow(target, queries.get(i).label(), stats, ratio).toMarkdown());
         }
         return lines;
-    }
-
-    private static String row(String target, String method, QueryStats stats, double ratio) {
-        String ratioText = Double.isNaN(ratio) ? "-" : String.format(Locale.ROOT, "%.1fx", ratio);
-        return String.format(Locale.ROOT, "| %s | %s | %.4f | %.4f | %.4f | %s |",
-                target, method, stats.meanMs(), stats.medianMs(), stats.p95Ms(), ratioText);
     }
 
     /** 엔진을 다시 열어 인덱스를 다시 만드는 시간을 재고, 재시작 전후 결과가 같은지 본다. */
@@ -301,8 +307,8 @@ final class BenchmarkRunner {
     private static long fileSize(Path path) {
         try {
             return Files.size(path);
-        } catch (IOException e) {
-            throw new IllegalStateException("[fileSize] 파일 크기를 읽지 못했습니다: " + path, e);
+        } catch (IOException exception) {
+            throw new IllegalStateException("[fileSize] 파일 크기를 읽지 못했습니다: " + path, exception);
         }
     }
 
@@ -311,5 +317,15 @@ final class BenchmarkRunner {
     }
 
     private record Query(String label, String sql, boolean isIndexAllowed, AccessPath expectedPath) {
+    }
+
+    /** 결과 표의 한 줄. 배수는 같은 대상의 인덱스 중앙값 대비 비율이다 (없으면 NaN). */
+    private record ReportRow(String target, String method, QueryStats stats, double ratio) {
+
+        String toMarkdown() {
+            String ratioText = Double.isNaN(ratio) ? "-" : String.format(Locale.ROOT, "%.1fx", ratio);
+            return String.format(Locale.ROOT, "| %s | %s | %.4f | %.4f | %.4f | %s |",
+                    target, method, stats.meanMs(), stats.medianMs(), stats.p95Ms(), ratioText);
+        }
     }
 }

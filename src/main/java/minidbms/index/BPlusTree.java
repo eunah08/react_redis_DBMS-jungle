@@ -143,7 +143,7 @@ public final class BPlusTree {
         if (root == null) {
             return;
         }
-        int leafDepth = checkNode(root, Long.MIN_VALUE, Long.MAX_VALUE, 1);
+        int leafDepth = checkNode(root, new KeyRange(Long.MIN_VALUE, Long.MAX_VALUE), 1);
         if (leafDepth != height) {
             throw new IllegalStateException("[checkInvariants] 높이(" + height + ")와 리프 깊이(" + leafDepth + ")가 다릅니다");
         }
@@ -238,9 +238,9 @@ public final class BPlusTree {
         System.arraycopy(array, from, array, from + 1, count - from);
     }
 
-    private int checkNode(Node node, long lowInclusive, long highExclusive, int depth) {
+    private int checkNode(Node node, KeyRange range, int depth) {
         for (int i = 0; i < node.keyCount; i++) {
-            boolean isOutOfRange = node.keys[i] < lowInclusive || node.keys[i] >= highExclusive;
+            boolean isOutOfRange = node.keys[i] < range.lowInclusive() || node.keys[i] >= range.highExclusive();
             boolean isUnsorted = i > 0 && node.keys[i - 1] >= node.keys[i];
             if (isOutOfRange || isUnsorted || node.keyCount > order) {
                 throw new IllegalStateException("[checkInvariants] 노드의 키 순서나 범위가 올바르지 않습니다");
@@ -249,15 +249,15 @@ public final class BPlusTree {
         if (node instanceof Leaf) {
             return depth;
         }
-        return checkChildren((Internal) node, lowInclusive, highExclusive, depth);
+        return checkChildren((Internal) node, range, depth);
     }
 
-    private int checkChildren(Internal internal, long lowInclusive, long highExclusive, int depth) {
+    private int checkChildren(Internal internal, KeyRange range, int depth) {
         int leafDepth = -1;
         for (int i = 0; i <= internal.keyCount; i++) {
-            long low = i == 0 ? lowInclusive : internal.keys[i - 1];
-            long high = i == internal.keyCount ? highExclusive : internal.keys[i];
-            int childDepth = checkNode(internal.children[i], low, high, depth + 1);
+            long low = i == 0 ? range.lowInclusive() : internal.keys[i - 1];
+            long high = i == internal.keyCount ? range.highExclusive() : internal.keys[i];
+            int childDepth = checkNode(internal.children[i], new KeyRange(low, high), depth + 1);
             if (leafDepth != -1 && leafDepth != childDepth) {
                 throw new IllegalStateException("[checkInvariants] 리프 깊이가 서로 다릅니다");
             }
@@ -267,6 +267,10 @@ public final class BPlusTree {
     }
 
     private record Split(int separator, Node right) {
+    }
+
+    /** 한 노드 아래에 올 수 있는 키의 범위. 점검용. */
+    private record KeyRange(long lowInclusive, long highExclusive) {
     }
 
     private abstract static class Node {

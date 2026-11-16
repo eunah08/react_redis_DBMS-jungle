@@ -78,33 +78,25 @@ final class RowCodec {
         if (row.size() != columns.size()) {
             throw new IllegalArgumentException("[encodePayload] 값 개수가 컬럼 수와 다릅니다");
         }
-        List<byte[]> encodedStrings = new ArrayList<>();
+        List<byte[]> encodedColumns = new ArrayList<>(columns.size());
         int size = 0;
         for (int i = 0; i < columns.size(); i++) {
-            size += Integer.BYTES;
-            if (columns.get(i).type() == ColumnType.STRING) {
-                byte[] bytes = toUtf8(columns.get(i), row.get(i));
-                encodedStrings.add(bytes);
-                size += bytes.length;
-            }
+            byte[] encoded = encodeColumn(columns.get(i), row.get(i));
+            encodedColumns.add(encoded);
+            size += encoded.length;
         }
-        return fillPayload(columns, row, encodedStrings, size);
+        ByteBuffer buffer = ByteBuffer.allocate(size);
+        encodedColumns.forEach(buffer::put);
+        return buffer.array();
     }
 
-    private static byte[] fillPayload(List<Column> columns, List<Object> row,
-                                      List<byte[]> encodedStrings, int size) {
-        ByteBuffer buffer = ByteBuffer.allocate(size);
-        int stringIndex = 0;
-        for (int i = 0; i < columns.size(); i++) {
-            if (columns.get(i).type() == ColumnType.INT) {
-                buffer.putInt(toInt(columns.get(i), row.get(i)));
-            } else {
-                byte[] bytes = encodedStrings.get(stringIndex++);
-                buffer.putInt(bytes.length);
-                buffer.put(bytes);
-            }
+    /** 컬럼 값 하나를 본문 조각으로 바꾼다. 정수는 int32, 문자열은 [바이트 수 int32][UTF-8 바이트]. */
+    private static byte[] encodeColumn(Column column, Object value) {
+        if (column.type() == ColumnType.INT) {
+            return ByteBuffer.allocate(Integer.BYTES).putInt(toInt(column, value)).array();
         }
-        return buffer.array();
+        byte[] bytes = toUtf8(column, value);
+        return ByteBuffer.allocate(Integer.BYTES + bytes.length).putInt(bytes.length).put(bytes).array();
     }
 
     private static int toInt(Column column, Object value) {

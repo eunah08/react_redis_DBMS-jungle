@@ -175,7 +175,7 @@ public final class DbWorkerPool implements Executor {
     private Runnable pollTask() {
         try {
             return taskQueue.poll(POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             return null;
         }

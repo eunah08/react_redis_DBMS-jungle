@@ -55,8 +55,8 @@ class DbEngineConcurrencyTest {
         CyclicBarrier start = new CyclicBarrier(threadCount);
         try {
             List<Future<List<Integer>>> futures = new ArrayList<>();
-            for (int t = 0; t < threadCount; t++) {
-                int threadNumber = t;
+            for (int i = 0; i < threadCount; i++) {
+                int threadNumber = i;
                 futures.add(threads.submit(() -> insertMany(start, threadNumber, perThread)));
             }
             Set<Integer> ids = new TreeSet<>();
@@ -83,12 +83,12 @@ class DbEngineConcurrencyTest {
         AtomicBoolean isWriting = new AtomicBoolean(true);
         try {
             List<Future<?>> readers = new ArrayList<>();
-            for (int r = 0; r < 3; r++) {
+            for (int i = 0; i < 3; i++) {
                 readers.add(threads.submit(() -> readUntilStopped(isWriting)));
             }
             List<Future<?>> writers = new ArrayList<>();
-            for (int w = 0; w < 3; w++) {
-                int writerNumber = w;
+            for (int i = 0; i < 3; i++) {
+                int writerNumber = i;
                 writers.add(threads.submit(() -> insertMany(new CyclicBarrier(1), writerNumber, 300)));
             }
             for (Future<?> writer : writers) {
@@ -249,15 +249,15 @@ class DbEngineConcurrencyTest {
     private static void awaitBarrier(CyclicBarrier barrier) {
         try {
             barrier.await(WAIT_SECONDS, TimeUnit.SECONDS);
-        } catch (Exception e) {
-            throw new IllegalStateException("두 SELECT가 읽기 구간에 함께 들어가지 못했습니다", e);
+        } catch (Exception exception) {
+            throw new IllegalStateException("두 SELECT가 읽기 구간에 함께 들어가지 못했습니다", exception);
         }
     }
 
     private static void awaitLatch(CountDownLatch latch) {
         try {
             latch.await(WAIT_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
         }
     }

@@ -25,7 +25,8 @@ import java.util.regex.Pattern;
  */
 public final class TableFile {
 
-    private static final Pattern TABLE_NAME = Pattern.compile("[a-z0-9_]+");
+    /** 소문자·숫자·밑줄, 1~64자. 길이를 묶어 운영체제 경로 길이 한도에 걸리지 않게 한다. */
+    private static final Pattern TABLE_NAME = Pattern.compile("[a-z0-9_]{1,64}");
     private static final String SCHEMA_SUFFIX = ".schema";
     private static final String TABLE_SUFFIX = ".tbl";
 
@@ -40,7 +41,7 @@ public final class TableFile {
     }
 
     /**
-     * 테이블 이름이 규칙(소문자·숫자·밑줄)에 맞는지 알려 준다. 파일 경로에 쓰기 전에 검사한다. (협약 2.1)
+     * 테이블 이름이 규칙(소문자·숫자·밑줄, 64자 이하)에 맞는지 알려 준다. 파일 경로에 쓰기 전에 검사한다. (협약 2.1)
      *
      * @param tableName 테이블 이름
      * @return 규칙에 맞으면 true
@@ -77,9 +78,9 @@ public final class TableFile {
             long startPosition = handle.endPosition();
             try {
                 writeFully(handle.channel(), ByteBuffer.wrap(record), startPosition);
-            } catch (IOException e) {
+            } catch (IOException exception) {
                 undoPartialWrite(handle, startPosition);
-                throw new StorageException("[appendRow] 행을 쓰지 못했습니다: " + tableName, e);
+                throw new StorageException("[appendRow] 행을 쓰지 못했습니다: " + tableName, exception);
             }
             handle.setEndPosition(startPosition + record.length);
             return startPosition;
@@ -101,8 +102,8 @@ public final class TableFile {
             }
             try {
                 handle.channel().truncate(position);
-            } catch (IOException e) {
-                throw new StorageException("[rollbackAppend] 행을 되돌리지 못했습니다: " + tableName, e);
+            } catch (IOException exception) {
+                throw new StorageException("[rollbackAppend] 행을 되돌리지 못했습니다: " + tableName, exception);
             }
             handle.setEndPosition(position);
         }
@@ -137,8 +138,8 @@ public final class TableFile {
         }
         try {
             return readRecordAt(handle, position, endPosition);
-        } catch (IOException e) {
-            throw new StorageException("[readRowAt] 행을 읽지 못했습니다 (위치 " + position + ")", e);
+        } catch (IOException exception) {
+            throw new StorageException("[readRowAt] 행을 읽지 못했습니다 (위치 " + position + ")", exception);
         }
     }
 
@@ -150,8 +151,8 @@ public final class TableFile {
         for (TableHandle handle : handles.values()) {
             try {
                 handle.close();
-            } catch (StorageException e) {
-                failure = e;
+            } catch (StorageException exception) {
+                failure = exception;
             }
         }
         handles.clear();
@@ -210,18 +211,18 @@ public final class TableFile {
         try {
             byte[] bytes = Files.readAllBytes(schemaPath);
             return StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString();
-        } catch (CharacterCodingException e) {
-            throw new StorageException("[readSchema] 스키마 파일이 UTF-8이 아닙니다: " + schemaPath.getFileName(), e);
-        } catch (IOException e) {
-            throw new StorageException("[readSchema] 스키마 파일을 읽지 못했습니다: " + schemaPath.getFileName(), e);
+        } catch (CharacterCodingException exception) {
+            throw new StorageException("[readSchema] 스키마 파일이 UTF-8이 아닙니다: " + schemaPath.getFileName(), exception);
+        } catch (IOException exception) {
+            throw new StorageException("[readSchema] 스키마 파일을 읽지 못했습니다: " + schemaPath.getFileName(), exception);
         }
     }
 
     private static void undoPartialWrite(TableHandle handle, long startPosition) {
         try {
             handle.channel().truncate(startPosition);
-        } catch (IOException e) {
-            throw new StorageException("[appendRow] 쓰다 만 행을 잘라내지 못했습니다. 다음 실행 때 복구합니다", e);
+        } catch (IOException exception) {
+            throw new StorageException("[appendRow] 쓰다 만 행을 잘라내지 못했습니다. 다음 실행 때 복구합니다", exception);
         }
     }
 

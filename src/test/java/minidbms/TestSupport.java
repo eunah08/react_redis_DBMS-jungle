@@ -27,8 +27,8 @@ public final class TestSupport {
             Path dataDir = Files.createDirectories(parentDir.resolve("data"));
             Files.copy(PRODUCTS_SCHEMA, dataDir.resolve("products.schema"));
             return dataDir;
-        } catch (IOException e) {
-            throw new IllegalStateException("[prepareDataDir] 테스트 폴더를 준비하지 못했습니다", e);
+        } catch (IOException exception) {
+            throw new IllegalStateException("[prepareDataDir] 테스트 폴더를 준비하지 못했습니다", exception);
         }
     }
 
@@ -42,8 +42,8 @@ public final class TestSupport {
     public static void writeSchema(Path dataDir, String tableName, String schemaText) {
         try {
             Files.writeString(dataDir.resolve(tableName + ".schema"), schemaText);
-        } catch (IOException e) {
-            throw new IllegalStateException("[writeSchema] 스키마를 쓰지 못했습니다", e);
+        } catch (IOException exception) {
+            throw new IllegalStateException("[writeSchema] 스키마를 쓰지 못했습니다", exception);
         }
     }
 

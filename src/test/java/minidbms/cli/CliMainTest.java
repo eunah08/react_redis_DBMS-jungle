@@ -26,13 +26,13 @@ class CliMainTest {
 
     private Path dataDir;
     private ByteArrayOutputStream outBytes;
-    private ByteArrayOutputStream errBytes;
+    private ByteArrayOutputStream errorBytes;
 
     @BeforeEach
     void setUp() {
         dataDir = TestSupport.prepareDataDir(tempDir);
         outBytes = new ByteArrayOutputStream();
-        errBytes = new ByteArrayOutputStream();
+        errorBytes = new ByteArrayOutputStream();
     }
 
     @Test
@@ -149,6 +149,28 @@ class CliMainTest {
     }
 
     @Test
+    void 줄바꿈과_탭이_든_값도_표_한_줄로_그린다() throws IOException {
+        Path sqlFile = writeSql("INSERT INTO products (name, price) VALUES ('첫줄\n둘째\t칸', 1);\nSELECT * FROM products;");
+
+        assertEquals(0, runCli("--data-dir", dataDir.toString(), sqlFile.toString()), stderr());
+
+        String[] lines = stdout().trim().replace("\r\n", "\n").split("\n");
+        assertEquals(7, lines.length, "inserted 줄 + 표 5줄 + 행 수 줄");
+        assertEquals("|  1 | 첫줄\\n둘째\\t칸 |     1 |", lines[4]);
+        assertEquals(TableFormatter.displayWidth(lines[1]), TableFormatter.displayWidth(lines[4]), "표 폭이 맞아야 한다");
+        assertEquals("1 row", lines[6]);
+    }
+
+    @Test
+    void 줄바꿈이_든_값도_JSON에서는_이스케이프되어_한_줄이다() throws IOException {
+        Path sqlFile = writeSql("INSERT INTO products (name, price) VALUES ('a\nb', 1);\nSELECT name FROM products;");
+
+        assertEquals(0, runCli("--data-dir", dataDir.toString(), "--json", sqlFile.toString()), stderr());
+
+        assertEquals("{\"id\":1}\n{\"rows\":[{\"name\":\"a\\nb\"}]}", stdout().trim().replace("\r\n", "\n"));
+    }
+
+    @Test
     void 정렬은_한글_폭을_2로_센다() {
         assertEquals(6, TableFormatter.displayWidth("키보드"));
         assertEquals(4, TableFormatter.displayWidth("ab😀"));
@@ -163,8 +185,8 @@ class CliMainTest {
 
     private int runCli(String... args) {
         PrintStream out = new PrintStream(outBytes, true, StandardCharsets.UTF_8);
-        PrintStream err = new PrintStream(errBytes, true, StandardCharsets.UTF_8);
-        return CliMain.run(args, out, err);
+        PrintStream errorOutput = new PrintStream(errorBytes, true, StandardCharsets.UTF_8);
+        return CliMain.run(args, out, errorOutput);
     }
 
     private String stdout() {
@@ -172,6 +194,6 @@ class CliMainTest {
     }
 
     private String stderr() {
-        return errBytes.toString(StandardCharsets.UTF_8);
+        return errorBytes.toString(StandardCharsets.UTF_8);
     }
 }

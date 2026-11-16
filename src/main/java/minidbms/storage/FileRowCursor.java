@@ -46,8 +46,8 @@ final class FileRowCursor implements RowCursor {
             FileChannel channel = FileChannel.open(tablePath, StandardOpenOption.READ);
             channel.position(TableHandle.HEADER_BYTES);
             return new FileRowCursor(schema, limit, channel);
-        } catch (IOException e) {
-            throw new StorageException("[readRows] 테이블 파일을 열 수 없습니다: " + tablePath.getFileName(), e);
+        } catch (IOException exception) {
+            throw new StorageException("[readRows] 테이블 파일을 열 수 없습니다: " + tablePath.getFileName(), exception);
         }
     }
 
@@ -77,8 +77,8 @@ final class FileRowCursor implements RowCursor {
         isClosed = true;
         try {
             channel.close();
-        } catch (IOException e) {
-            throw new StorageException("[close] 테이블 파일을 닫지 못했습니다", e);
+        } catch (IOException exception) {
+            throw new StorageException("[close] 테이블 파일을 닫지 못했습니다", exception);
         }
     }
 
@@ -100,12 +100,12 @@ final class FileRowCursor implements RowCursor {
             StoredRow row = new StoredRow(position, RowCodec.decodePayload(schema, payload));
             position += RowCodec.LENGTH_BYTES + (long) payloadLength + RowCodec.CRC_BYTES;
             return row;
-        } catch (IOException e) {
+        } catch (IOException exception) {
             close();
-            throw new StorageException("[readRows] 행을 읽지 못했습니다 (위치 " + position + ")", e);
-        } catch (StorageException e) {
+            throw new StorageException("[readRows] 행을 읽지 못했습니다 (위치 " + position + ")", exception);
+        } catch (StorageException exception) {
             close();
-            throw e;
+            throw exception;
         }
     }
 }

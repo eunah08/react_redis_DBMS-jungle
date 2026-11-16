@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -153,6 +154,17 @@ class DbHttpServerTest {
     }
 
     @Test
+    void Content_Type이_틀린_큰_본문도_연결이_끊기지_않고_400을_받는다() throws Exception {
+        startRealServer(2, 16);
+        String bigBody = "{\"sql\":\"" + "a".repeat(500_000) + "\"}";
+
+        HttpResponse<String> response = post("/sql", bigBody, "text/plain");
+
+        assertError(response, 400, "BAD_REQUEST");
+        assertEquals(200, get("/health").statusCode());
+    }
+
+    @Test
     void UTF8이_아닌_본문은_BAD_REQUEST다() throws Exception {
         startRealServer(2, 16);
         HttpRequest request = HttpRequest.newBuilder(uri("/sql"))
@@ -276,8 +288,8 @@ class DbHttpServerTest {
         engine.setSelectHook(() -> {
             try {
                 barrier.await(WAIT_SECONDS, TimeUnit.SECONDS);
-            } catch (Exception e) {
-                throw new IllegalStateException("읽기 구간에 함께 들어가지 못했습니다", e);
+            } catch (Exception exception) {
+                throw new IllegalStateException("읽기 구간에 함께 들어가지 못했습니다", exception);
             }
         });
 
@@ -370,7 +382,7 @@ class DbHttpServerTest {
 
     private void startServerWith(int workers, int queue, SqlExecutor executor) throws IOException {
         pool = new DbWorkerPool(workers, queue);
-        server = new DbHttpServer(executor, pool, "127.0.0.1", 0);
+        server = new DbHttpServer(executor, pool, new InetSocketAddress("127.0.0.1", 0));
         server.start();
     }
 
@@ -423,7 +435,7 @@ class DbHttpServerTest {
     private static void awaitQuietly(CountDownLatch latch) {
         try {
             latch.await(WAIT_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
         }
     }

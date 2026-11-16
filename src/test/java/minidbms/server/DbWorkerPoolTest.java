@@ -53,8 +53,8 @@ class DbWorkerPoolTest {
                 try {
                     barrier.await(WAIT_SECONDS, TimeUnit.SECONDS);
                     passed.incrementAndGet();
-                } catch (Exception e) {
-                    throw new IllegalStateException(e);
+                } catch (Exception exception) {
+                    throw new IllegalStateException(exception);
                 } finally {
                     done.countDown();
                 }
@@ -159,7 +159,7 @@ class DbWorkerPoolTest {
     private static void awaitQuietly(CountDownLatch latch) {
         try {
             latch.await(WAIT_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
         }
     }

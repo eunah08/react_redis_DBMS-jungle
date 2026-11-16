@@ -48,6 +48,9 @@ public final class DbHttpServer {
     private static final int TERMINATION_WAIT_SECONDS = 60;
     private static final String CONTENT_TYPE_JSON = "application/json; charset=utf-8";
     private static final String SQL_FIELD = "sql";
+    private static final NumberRange PORT_RANGE = new NumberRange(0, 65535);
+    private static final NumberRange WORKER_RANGE = new NumberRange(1, 1024);
+    private static final NumberRange QUEUE_RANGE = new NumberRange(1, 1_000_000);
 
     private final SqlExecutor executor;
     private final DbWorkerPool pool;
@@ -59,14 +62,13 @@ public final class DbHttpServer {
      *
      * @param executor SQL 실행 길 (운영에서는 DbEngine::execute)
      * @param pool     요청을 처리할 스레드 풀. stop()이 함께 종료한다
-     * @param host     묶을 주소
-     * @param port     묶을 포트. 0이면 빈 포트를 고른다
+     * @param address  묶을 주소와 포트. 포트가 0이면 빈 포트를 고른다
      * @throws IOException 주소에 묶지 못한 경우
      */
-    public DbHttpServer(SqlExecutor executor, DbWorkerPool pool, String host, int port) throws IOException {
+    public DbHttpServer(SqlExecutor executor, DbWorkerPool pool, InetSocketAddress address) throws IOException {
         this.executor = executor;
         this.pool = pool;
-        this.httpServer = HttpServer.create(new InetSocketAddress(host, port), 0);
+        this.httpServer = HttpServer.create(address, 0);
         this.httpServer.setExecutor(pool);
         this.httpServer.createContext("/", this::handle);
     }
@@ -92,7 +94,7 @@ public final class DbHttpServer {
             if (!pool.awaitTermination(TERMINATION_WAIT_SECONDS, TimeUnit.SECONDS)) {
                 System.err.println("[stop] 워커가 " + TERMINATION_WAIT_SECONDS + "초 안에 끝나지 않았습니다");
             }
-        } catch (InterruptedException e) {
+        } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
         }
     }
@@ -114,8 +116,8 @@ public final class DbHttpServer {
         ServerOptions options;
         try {
             options = ServerOptions.parse(args);
-        } catch (IllegalArgumentException e) {
-            System.err.println(e.getMessage());
+        } catch (IllegalArgumentException exception) {
+            System.err.println(exception.getMessage());
             System.err.println("사용법: java -jar target/mini-dbms.jar server [--host 127.0.0.1] [--port 8080]"
                     + " [--workers N] [--queue 128] [--data-dir data]");
             return 1;
@@ -123,8 +125,8 @@ public final class DbHttpServer {
         DbEngine engine;
         try {
             engine = new DbEngine(options.dataDir());
-        } catch (StorageException e) {
-            System.err.println(e.getMessage());
+        } catch (StorageException exception) {
+            System.err.println(exception.getMessage());
             return 1;
         }
         return serve(options, engine);
@@ -134,9 +136,9 @@ public final class DbHttpServer {
         DbWorkerPool pool = new DbWorkerPool(options.workers(), options.queue());
         DbHttpServer server;
         try {
-            server = new DbHttpServer(engine::execute, pool, options.host(), options.port());
-        } catch (IOException | IllegalArgumentException e) {
-            System.err.println("[run] 서버를 시작하지 못했습니다: " + e.getMessage());
+            server = new DbHttpServer(engine::execute, pool, new InetSocketAddress(options.host(), options.port()));
+        } catch (IOException | IllegalArgumentException exception) {
+            System.err.println("[run] 서버를 시작하지 못했습니다: " + exception.getMessage());
             pool.shutdown();
             engine.close();
             return 1;
@@ -157,7 +159,7 @@ public final class DbHttpServer {
     private static void awaitQuietly(CountDownLatch latch) {
         try {
             latch.await();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
         }
     }
@@ -166,10 +168,10 @@ public final class DbHttpServer {
         try {
             Reply reply = createReply(exchange);
             send(exchange, reply);
-        } catch (IOException e) {
-            System.err.println("[handle] 응답을 보내지 못했습니다 (클라이언트가 연결을 끊었을 수 있습니다): " + e.getMessage());
-        } catch (RuntimeException | Error e) {
-            System.err.println("[handle] 요청 처리 중 오류: " + e);
+        } catch (IOException exception) {
+            System.err.println("[handle] 응답을 보내지 못했습니다 (클라이언트가 연결을 끊었을 수 있습니다): " + exception.getMessage());
+        } catch (RuntimeException | Error exception) {
+            System.err.println("[handle] 요청 처리 중 오류: " + exception);
             sendInternalErrorQuietly(exchange);
         } finally {
             exchange.close();
@@ -191,10 +193,8 @@ public final class DbHttpServer {
         return Reply.error(404, "NOT_FOUND");
     }
 
+    /** 본문을 먼저 읽고 나서 검사한다. 안 읽고 응답하면 큰 본문에서 연결이 끊겨 클라이언트가 응답을 못 받는다. */
     private Reply createSqlReply(HttpExchange exchange) throws IOException {
-        if (!isJsonContentType(exchange.getRequestHeaders().getFirst("Content-Type"))) {
-            return badRequest("Content-Type은 application/json(UTF-8)이어야 합니다");
-        }
         String declaredLength = exchange.getRequestHeaders().getFirst("Content-Length");
         if (declaredLength != null && isLargerThanLimit(declaredLength)) {
             discardUpTo(exchange.getRequestBody(), MAX_DISCARD_BYTES);
@@ -203,6 +203,9 @@ public final class DbHttpServer {
         byte[] body = readBody(exchange.getRequestBody());
         if (body == null) {
             return Reply.error(413, "PAYLOAD_TOO_LARGE").closing();
+        }
+        if (!isJsonContentType(exchange.getRequestHeaders().getFirst("Content-Type"))) {
+            return badRequest("Content-Type은 application/json(UTF-8)이어야 합니다");
         }
         String sqlText = extractSql(body);
         if (sqlText == null) {
@@ -235,7 +238,7 @@ public final class DbHttpServer {
                 return null;
             }
             return sqlText;
-        } catch (CharacterCodingException | JsonParseException e) {
+        } catch (CharacterCodingException | JsonParseException exception) {
             return null;
         }
     }
@@ -260,7 +263,7 @@ public final class DbHttpServer {
     private static boolean isLargerThanLimit(String declaredLength) {
         try {
             return Long.parseLong(declaredLength.trim()) > MAX_BODY_BYTES;
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException exception) {
             return false;
         }
     }
@@ -314,8 +317,8 @@ public final class DbHttpServer {
     private static void sendInternalErrorQuietly(HttpExchange exchange) {
         try {
             send(exchange, Reply.error(500, ErrorCode.INTERNAL_ERROR.name()));
-        } catch (IOException | RuntimeException e) {
-            System.err.println("[handle] 오류 응답도 보내지 못했습니다: " + e.getMessage());
+        } catch (IOException | RuntimeException exception) {
+            System.err.println("[handle] 오류 응답도 보내지 못했습니다: " + exception.getMessage());
         }
     }
 
@@ -346,9 +349,9 @@ public final class DbHttpServer {
                 }
                 switch (args[i]) {
                     case "--host" -> host = args[i + 1];
-                    case "--port" -> port = toNumber(args[i], args[i + 1], 0, 65535);
-                    case "--workers" -> workers = toNumber(args[i], args[i + 1], 1, 1024);
-                    case "--queue" -> queue = toNumber(args[i], args[i + 1], 1, 1_000_000);
+                    case "--port" -> port = toNumber(args[i], args[i + 1], PORT_RANGE);
+                    case "--workers" -> workers = toNumber(args[i], args[i + 1], WORKER_RANGE);
+                    case "--queue" -> queue = toNumber(args[i], args[i + 1], QUEUE_RANGE);
                     case "--data-dir" -> dataDir = Path.of(args[i + 1]);
                     default -> throw new IllegalArgumentException("[parse] 알 수 없는 옵션입니다: " + args[i]);
                 }
@@ -356,16 +359,21 @@ public final class DbHttpServer {
             return new ServerOptions(host, port, workers, queue, dataDir);
         }
 
-        private static int toNumber(String option, String value, int min, int max) {
+        private static int toNumber(String option, String value, NumberRange range) {
             try {
                 int number = Integer.parseInt(value);
-                if (number >= min && number <= max) {
+                if (number >= range.min() && number <= range.max()) {
                     return number;
                 }
-            } catch (NumberFormatException e) {
+            } catch (NumberFormatException exception) {
                 throw new IllegalArgumentException("[parse] " + option + " 값이 숫자가 아닙니다: " + value);
             }
-            throw new IllegalArgumentException("[parse] " + option + " 값은 " + min + "~" + max + " 사이여야 합니다");
+            throw new IllegalArgumentException("[parse] " + option + " 값은 " + range.min() + "~" + range.max()
+                    + " 사이여야 합니다");
         }
+    }
+
+    /** 옵션 숫자의 허용 범위. */
+    private record NumberRange(int min, int max) {
     }
 }

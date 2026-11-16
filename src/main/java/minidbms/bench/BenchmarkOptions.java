@@ -69,41 +69,53 @@ record BenchmarkOptions(
      * @throws IllegalArgumentException 모르는 옵션, 값 누락, 숫자 오류
      */
     static BenchmarkOptions parse(String[] args) {
-        int records = DEFAULT_RECORDS;
-        LoadMode loadMode = LoadMode.SQL;
-        Path generateSqlFile = null;
-        Path dataDir = null;
-        String stepsText = null;
-        long seed = 20261116L;
-        int repeat = 10;
-        int warmup = 3;
-        int randomCount = 1000;
-        int linearRandomCount = 20;
-        boolean isThroughputMode = false;
-        int requests = 2000;
-        int clients = 16;
+        Builder builder = new Builder();
         for (int i = 0; i < args.length; i += 2) {
-            String value = readValue(args, i);
-            switch (args[i]) {
-                case "--records" -> records = toNonNegativeInt(args[i], value);
+            builder.apply(args[i], readValue(args, i));
+        }
+        return builder.build();
+    }
+
+    /** 옵션 값을 기본값에서 시작해 하나씩 덮어쓴다. */
+    private static final class Builder {
+        private int records = DEFAULT_RECORDS;
+        private LoadMode loadMode = LoadMode.SQL;
+        private Path generateSqlFile;
+        private Path dataDir;
+        private String stepsText;
+        private long seed = 20261116L;
+        private int repeat = 10;
+        private int warmup = 3;
+        private int randomCount = 1000;
+        private int linearRandomCount = 20;
+        private boolean isThroughputMode;
+        private int requests = 2000;
+        private int clients = 16;
+
+        void apply(String option, String value) {
+            switch (option) {
+                case "--records" -> records = toNonNegativeInt(option, value);
                 case "--load" -> loadMode = toLoadMode(value);
                 case "--generate-sql" -> generateSqlFile = Path.of(value);
                 case "--data-dir" -> dataDir = Path.of(value);
                 case "--steps" -> stepsText = value;
                 case "--seed" -> seed = Long.parseLong(value);
-                case "--repeat" -> repeat = toPositiveInt(args[i], value);
-                case "--warmup" -> warmup = toNonNegativeInt(args[i], value);
-                case "--random-count" -> randomCount = toNonNegativeInt(args[i], value);
-                case "--linear-random-count" -> linearRandomCount = toNonNegativeInt(args[i], value);
+                case "--repeat" -> repeat = toPositiveInt(option, value);
+                case "--warmup" -> warmup = toNonNegativeInt(option, value);
+                case "--random-count" -> randomCount = toNonNegativeInt(option, value);
+                case "--linear-random-count" -> linearRandomCount = toNonNegativeInt(option, value);
                 case "--mode" -> isThroughputMode = toThroughputFlag(value);
-                case "--requests" -> requests = toPositiveInt(args[i], value);
-                case "--clients" -> clients = toPositiveInt(args[i], value);
-                default -> throw new IllegalArgumentException("[parse] 알 수 없는 옵션입니다: " + args[i]);
+                case "--requests" -> requests = toPositiveInt(option, value);
+                case "--clients" -> clients = toPositiveInt(option, value);
+                default -> throw new IllegalArgumentException("[parse] 알 수 없는 옵션입니다: " + option);
             }
         }
-        List<Integer> steps = stepsText == null ? defaultSteps(records) : parseSteps(stepsText, records);
-        return new BenchmarkOptions(records, loadMode, generateSqlFile, dataDir, steps, seed,
-                repeat, warmup, randomCount, linearRandomCount, isThroughputMode, requests, clients);
+
+        BenchmarkOptions build() {
+            List<Integer> steps = stepsText == null ? defaultSteps(records) : parseSteps(stepsText, records);
+            return new BenchmarkOptions(records, loadMode, generateSqlFile, dataDir, steps, seed,
+                    repeat, warmup, randomCount, linearRandomCount, isThroughputMode, requests, clients);
+        }
     }
 
     private static boolean toThroughputFlag(String value) {
@@ -164,7 +176,7 @@ record BenchmarkOptions(
             if (number >= 0) {
                 return number;
             }
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException exception) {
             throw new IllegalArgumentException("[parse] " + option + " 값이 숫자가 아닙니다: " + value);
         }
         throw new IllegalArgumentException("[parse] " + option + " 값은 0 이상이어야 합니다: " + value);

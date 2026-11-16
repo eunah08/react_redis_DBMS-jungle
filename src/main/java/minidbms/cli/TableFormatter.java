@@ -52,6 +52,29 @@ final class TableFormatter {
         return width;
     }
 
+    /**
+     * 칸에 쓸 글자를 만든다. 줄바꿈·탭 같은 제어 문자는 표 줄을 깨므로 \n, \t, \u0001 처럼 보이게 바꾼다.
+     * 저장된 값은 바뀌지 않는다. 표에 그릴 때만 바꾼다.
+     *
+     * @param cell 칸의 값
+     * @return 표에 쓸 글자
+     */
+    static String toCellText(Object cell) {
+        String text = String.valueOf(cell);
+        StringBuilder visible = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char letter = text.charAt(i);
+            switch (letter) {
+                case '\n' -> visible.append("\\n");
+                case '\r' -> visible.append("\\r");
+                case '\t' -> visible.append("\\t");
+                default -> visible.append(Character.isISOControl(letter)
+                        ? String.format("\\u%04x", (int) letter) : String.valueOf(letter));
+            }
+        }
+        return visible.toString();
+    }
+
     private static boolean isWide(int codePoint) {
         return (codePoint >= 0x1100 && codePoint <= 0x115F)
                 || (codePoint >= 0x2E80 && codePoint <= 0xA4CF)
@@ -71,7 +94,7 @@ final class TableFormatter {
         }
         for (List<Object> row : rows) {
             for (int i = 0; i < widths.length; i++) {
-                widths[i] = Math.max(widths[i], displayWidth(String.valueOf(row.get(i))));
+                widths[i] = Math.max(widths[i], displayWidth(toCellText(row.get(i))));
             }
         }
         return widths;
@@ -89,7 +112,7 @@ final class TableFormatter {
         StringBuilder line = new StringBuilder("|");
         for (int i = 0; i < widths.length; i++) {
             Object cell = cells.get(i);
-            String text = String.valueOf(cell);
+            String text = toCellText(cell);
             int padding = widths[i] - displayWidth(text);
             boolean isRightAligned = !isHeader && cell instanceof Integer;
             line.append(' ');

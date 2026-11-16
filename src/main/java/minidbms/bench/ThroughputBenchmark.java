@@ -2,6 +2,7 @@ package minidbms.bench;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -85,18 +86,19 @@ final class ThroughputBenchmark {
 
     private String measureWorkers(DbEngine engine, int workers) throws IOException {
         DbWorkerPool pool = new DbWorkerPool(workers, QUEUE_CAPACITY);
-        DbHttpServer server = new DbHttpServer(engine::execute, pool, "127.0.0.1", 0);
+        DbHttpServer server = new DbHttpServer(engine::execute, pool, new InetSocketAddress("127.0.0.1", 0));
         server.start();
         try {
+            URI uri = URI.create("http://127.0.0.1:" + server.getPort() + "/sql");
             int linearRequests = Math.max(MIN_LINEAR_REQUESTS, options.requests() / LINEAR_DIVISOR);
             Random random = new Random(options.seed());
             int recordCount = Math.max(options.records(), 1);
-            double indexRate = measure(server.getPort(), options.requests(),
-                    i -> "SELECT * FROM products WHERE id = " + (random.nextInt(recordCount) + 1) + ";");
-            double linearRate = measure(server.getPort(), linearRequests,
-                    i -> "SELECT * FROM products WHERE name = '" + BenchmarkRunner.productName(i % recordCount + 1) + "';");
-            double insertRate = measure(server.getPort(), options.requests(),
-                    i -> "INSERT INTO products (name, price) VALUES ('t" + workers + "_" + i + "', " + i + ");");
+            double indexRate = measure(new Phase(uri, options.requests(),
+                    i -> "SELECT * FROM products WHERE id = " + (random.nextInt(recordCount) + 1) + ";"));
+            double linearRate = measure(new Phase(uri, linearRequests,
+                    i -> "SELECT * FROM products WHERE name = '" + BenchmarkRunner.productName(i % recordCount + 1) + "';"));
+            double insertRate = measure(new Phase(uri, options.requests(),
+                    i -> "INSERT INTO products (name, price) VALUES ('t" + workers + "_" + i + "', " + i + ");"));
             return String.format(Locale.ROOT, "| %d | %.0f | %.1f | %.0f |", workers, indexRate, linearRate, insertRate);
         } finally {
             server.stop();
@@ -104,14 +106,14 @@ final class ThroughputBenchmark {
     }
 
     /** 동시 클라이언트로 요청을 모두 보내고 초당 처리 수를 돌려준다. 200이 아닌 응답이 있으면 실패다. */
-    private double measure(int port, int requestCount, IntFunction<String> sqlSupplier) {
+    private double measure(Phase phase) {
         ExecutorService clients = Executors.newFixedThreadPool(options.clients());
         AtomicInteger next = new AtomicInteger();
         long start = System.nanoTime();
         try {
             List<Future<Integer>> futures = new ArrayList<>();
-            for (int c = 0; c < options.clients(); c++) {
-                futures.add(clients.submit(() -> sendUntilDone(port, requestCount, next, sqlSupplier)));
+            for (int i = 0; i < options.clients(); i++) {
+                futures.add(clients.submit(() -> sendUntilDone(phase, next)));
             }
             int failures = 0;
             for (Future<Integer> future : futures) {
@@ -120,25 +122,25 @@ final class ThroughputBenchmark {
             if (failures > 0) {
                 throw new IllegalStateException("[measure] 200이 아닌 응답이 " + failures + "건 있었습니다");
             }
-        } catch (InterruptedException e) {
+        } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("[measure] 측정이 중단되었습니다", e);
-        } catch (ExecutionException e) {
-            throw new IllegalStateException("[measure] 요청을 보내지 못했습니다: " + e.getCause(), e);
+            throw new IllegalStateException("[measure] 측정이 중단되었습니다", exception);
+        } catch (ExecutionException exception) {
+            throw new IllegalStateException("[measure] 요청을 보내지 못했습니다: " + exception.getCause(), exception);
         } finally {
             clients.shutdownNow();
         }
         double seconds = (System.nanoTime() - start) / 1_000_000_000.0;
-        return requestCount / seconds;
+        return phase.requestCount() / seconds;
     }
 
-    private int sendUntilDone(int port, int requestCount, AtomicInteger next, IntFunction<String> sqlSupplier)
-            throws IOException, InterruptedException {
+    /** 공용 번호표(next)를 하나씩 받아 요청을 보낸다. 모든 번호가 나가면 멈춘다. */
+    private int sendUntilDone(Phase phase, AtomicInteger next) throws IOException, InterruptedException {
         int failures = 0;
         int index = next.getAndIncrement();
-        while (index < requestCount) {
-            String body = "{\"sql\":" + JsonWriter.quote(sqlSupplier.apply(index)) + "}";
-            HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/sql"))
+        while (index < phase.requestCount()) {
+            String body = "{\"sql\":" + JsonWriter.quote(phase.sqlSupplier().apply(index)) + "}";
+            HttpRequest request = HttpRequest.newBuilder(phase.uri())
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                     .build();
@@ -164,5 +166,9 @@ final class ThroughputBenchmark {
         out.println("| 워커 수 | id 조회(인덱스) req/s | name 조회(선형) req/s | INSERT req/s |");
         out.println("|---|---|---|---|");
         rows.forEach(out::println);
+    }
+
+    /** 처리량 측정 한 단계 : 어디로, 몇 건을, 몇 번째 요청에 어떤 SQL을 보낼지. */
+    private record Phase(URI uri, int requestCount, IntFunction<String> sqlSupplier) {
     }
 }

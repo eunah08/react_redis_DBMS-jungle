@@ -187,6 +187,17 @@ class DbEngineTest {
     }
 
     @Test
+    void 테이블_이름이_64자를_넘으면_파일을_찾지_않고_UNKNOWN_TABLE이다() {
+        String tooLong = "t".repeat(65);
+        String veryLong = "t".repeat(5000);
+
+        assertEquals(ErrorCode.UNKNOWN_TABLE, engine.execute("SELECT * FROM " + tooLong + ";").getErrorCode());
+        assertEquals(ErrorCode.UNKNOWN_TABLE, engine.execute("SELECT * FROM " + veryLong + ";").getErrorCode());
+        assertEquals(ErrorCode.UNKNOWN_TABLE,
+                engine.execute("SELECT * FROM " + "t".repeat(64) + ";").getErrorCode(), "64자는 규칙 안이고 없을 뿐이다");
+    }
+
+    @Test
     void null_SQL은_SQL_SYNTAX다() {
         assertEquals(ErrorCode.SQL_SYNTAX, engine.execute((String) null).getErrorCode());
     }
