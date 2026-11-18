@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mini Redis 동작 시각화 (초안)</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap">
+<style>
+:root{--bg:#fff;--bg2:#fafafa;--hover:#f2f2f2;--border:#ebebeb;--bstrong:#c9c9c9;--line:#8f8f8f;--text:#171717;--text2:#666;--text3:#6b6b6b;--pri:#171717;--onpri:#fff;--ring:#006bff;--err:#d8001b;--ok:#107d32;--okbg:#ecfdec;--infobg:#f0f7ff;--infoline:#cae7ff;--pur:#7d00cc;--purbg:#faf0ff;--amber:#a35200;--amberbg:#fff4d6;
+--mono:"Geist Mono","Pretendard",ui-monospace,monospace;--sans:"Pretendard",-apple-system,"Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;--mv:600ms}
+@media (prefers-color-scheme:dark){:root{--bg:#0a0a0a;--bg2:#000;--hover:#1a1a1a;--border:#2e2e2e;--bstrong:#454545;--line:#8f8f8f;--text:#ededed;--text2:#a1a1a1;--text3:#878787;--pri:#ededed;--onpri:#0a0a0a;--ring:#006efe;--err:#ff565f;--ok:#00ca50;--okbg:#002608;--infobg:#06193a;--infoline:#003674;--pur:#c472fb;--purbg:#290c33;--amber:#ffa53d;--amberbg:#2e1c00}}
+*{box-sizing:border-box;border-radius:0}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px}
+body{display:grid;grid-template-rows:auto 1fr auto;height:100vh;overflow:hidden}
+header{display:flex;align-items:baseline;gap:16px;padding:10px 20px;border-bottom:1px solid var(--border)}
+header h1{font-size:20px;margin:0;font-weight:600;letter-spacing:-.02em}
+.kick{font-family:var(--mono);font-size:13px;color:var(--text3)}
+.app{display:grid;grid-template-columns:28% 1fr;min-height:0}
+.client{border-right:1px solid var(--border);padding:16px;display:flex;flex-direction:column;gap:16px;min-height:0;overflow:auto}
+.client h2{font-size:15px;margin:0 0 8px;font-weight:600}
+label{display:block;font-size:13px;color:var(--text2);margin:6px 0 4px}
+input,select{width:100%;height:36px;border:1px solid var(--bstrong);background:var(--bg);color:var(--text);padding:0 10px;font:inherit}
+.row{display:flex;gap:8px}.row>*{flex:1}
+button{height:38px;padding:0 14px;font:500 14px var(--sans);border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer}
+button.pri{background:var(--pri);color:var(--onpri);border-color:var(--pri)}
+button.ghost{border-color:transparent;background:transparent}
+button:disabled{background:var(--hover);color:var(--text3);border-color:var(--hover);cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:none;box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--ring)}
+.formerr{color:var(--err);font-size:13px;min-height:18px;margin-top:6px}
+.exp{display:flex;flex-direction:column;gap:8px}
+.exp button{text-align:left}
+.note{font-size:13px;color:var(--text2);line-height:1.5;border-left:2px solid var(--bstrong);padding-left:10px}
+.cards{display:flex;flex-direction:column;gap:8px}
+.card{border:1px solid var(--border);padding:10px 12px;font-size:13.5px}
+.card .k{font-family:var(--mono);font-weight:600}
+.card .st{color:var(--text2);margin-top:4px;font-family:var(--mono);font-size:13px}
+.shop{border:1px solid var(--border)}
+.shopbar{display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--hover);border-bottom:1px solid var(--border);font:12.5px var(--mono);color:var(--text2)}
+.shopbar i{width:8px;height:8px;border-radius:50%;background:var(--bstrong);display:inline-block}
+.shopbar span{flex:1;background:var(--bg);padding:2px 8px;margin-left:6px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px}
+.prod{border:1px solid var(--border);display:flex;flex-direction:column}
+.prod .img{aspect-ratio:4/3;background:var(--bg2);display:grid;place-items:center;font-size:26px;color:var(--text3);border-bottom:1px solid var(--border)}
+.prod .bd{padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+.prod .nm{font-size:14px;font-weight:600;word-break:break-all}
+.prod .pc{font-size:16px;font-weight:700}
+.prod .mt{font:12.5px var(--mono);color:var(--text3)}
+.prod.wait .nm,.prod.wait .pc{color:var(--text3);font-weight:500}
+.prod.miss .img,.prod.miss .nm{color:var(--err)}
+.empty{padding:18px 12px;color:var(--text2);font-size:13.5px;text-align:center;line-height:1.6}
+.card .val{margin-top:6px;background:var(--okbg);color:var(--ok);padding:6px 8px;font-family:var(--mono);font-size:13px;word-break:break-all}
+.card .bad{margin-top:6px;color:var(--err);font-size:13px}
+.mapwrap{display:grid;grid-template-columns:1fr;min-height:0;min-width:0}
+.mapwrap.open{grid-template-columns:1fr 400px}
+#map{width:100%;height:100%;display:block;min-height:0}
+#detail{border-left:1px solid var(--border);padding:14px 16px;overflow:auto;font-size:14px;line-height:1.55}
+#detail h3{margin:0;font-size:17px}
+.dhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.tabs{display:flex;background:var(--hover);padding:3px;gap:3px;margin-bottom:12px}
+.tabs button{flex:1;height:30px;border:1px solid transparent;background:transparent;font-size:13px}
+.tabs button[aria-selected=true]{background:var(--bg);border-color:var(--border)}
+.wl{display:flex;flex-direction:column;gap:2px;margin-bottom:12px}
+.wl div{display:grid;grid-template-columns:40px 1fr 70px;gap:8px;padding:4px 6px;cursor:pointer;font-size:13.5px}
+.wl div.on{outline:2px solid var(--ring);outline-offset:-2px}
+.mono{font-family:var(--mono)}
+.chain{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:8px 0 12px}
+.chain span{border:1px dashed var(--bstrong);padding:3px 7px;font-size:13px;color:var(--text2)}
+.chain span.cur{border:1px solid var(--ring);box-shadow:0 0 0 3px color-mix(in srgb,var(--ring) 20%,transparent);color:var(--text)}
+.chain i{color:var(--line);font-style:normal}
+.calc{background:var(--bg2);border:1px solid var(--border);padding:8px 10px;font-family:var(--mono);font-size:13px;margin:6px 0 12px;line-height:1.7}
+.bk{display:grid;grid-template-columns:36px 1fr;gap:6px;font-size:13px;padding:3px 0;border-bottom:1px solid var(--border)}
+.bk.hl{background:var(--infobg)}
+.node{display:inline-block;border:1px solid var(--bstrong);padding:1px 6px;margin:1px 2px;font-family:var(--mono);font-size:12.5px}
+.node.hit{border-color:var(--ring)}
+.node.exp{border-style:dashed;color:var(--err)}
+footer{border-top:1px solid var(--border);padding:10px 20px 12px;display:flex;flex-direction:column;gap:8px}
+.track{display:flex;gap:16px;align-items:center}
+.track input{flex:1;height:24px;accent-color:var(--pri);border:0;padding:0}
+.counter{font-family:var(--mono);font-size:13px;color:var(--text2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.caption{display:grid;grid-template-columns:150px 1fr;gap:12px;background:var(--infobg);border:1px solid var(--infoline);padding:9px 14px;min-height:52px;align-items:center}
+.caption .ck{font-family:var(--mono);font-size:13.5px;font-weight:600}
+.caption .ct{font-size:14px;line-height:1.5}
+.caption.mark{background:var(--amberbg);border-color:var(--amber)}
+.btns{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.speed{display:flex;background:var(--hover);padding:3px;gap:3px;margin-left:8px}
+.speed button{height:30px;padding:0 10px;border:1px solid transparent;background:transparent;font-family:var(--mono);font-size:13px}
+.speed button[aria-pressed=true]{background:var(--bg);border-color:var(--border)}
+.trk{display:flex;align-items:center;gap:6px;margin-left:auto;font-size:13px;color:var(--text2)}
+.trk select{width:110px;height:32px}
+/* svg */
+.box{fill:var(--bg);stroke:var(--border);stroke-width:1.5}
+.box2{fill:var(--bg2);stroke:var(--border);stroke-width:1.5}
+.click{cursor:pointer}
+.click:hover .box,.click:hover .box2{stroke:var(--line)}
+.lbl{font:600 15px var(--sans);fill:var(--text)}
+.sub{font:13px var(--mono);fill:var(--text3)}
+.st13{font:13px var(--sans);fill:var(--text2)}
+.path{fill:none;stroke:var(--bstrong);stroke-width:1.5}
+.ret{fill:none;stroke:var(--ok);stroke-width:2}
+.dash{fill:none;stroke:var(--pur);stroke-width:1.5;stroke-dasharray:5 4}
+
+.robot{cursor:pointer}
+.robot .body{fill:var(--ring);stroke:none}
+.robot text{font:600 13px var(--mono);fill:#fff;text-anchor:middle}
+.robot .pb{fill:#fff}
+.robot .pbb{fill:color-mix(in srgb,#fff 35%,var(--ring))}
+.robot.sel .body{stroke:var(--text);stroke-width:3}
+.robot.dim .body{fill:var(--infobg);stroke:var(--ring);stroke-width:1.5}
+.robot.dim text{fill:var(--ring)}
+.robot.sw .body{fill:var(--pur)}
+.robot.sw .pbb{fill:color-mix(in srgb,#fff 35%,var(--pur))}
+.cell{fill:var(--bg2);stroke:var(--border)}.cell.store{fill:var(--okbg)}.cell.on{stroke:var(--ring);stroke-width:2}
+.road{fill:var(--hover)}
+.colh{font:600 13.5px var(--sans);fill:var(--text);text-anchor:middle}
+.rowh{font:600 13px var(--mono);fill:var(--text3)}
+.csep{stroke:var(--border)}
+.env rect{fill:var(--amberbg);stroke:var(--amber);stroke-width:1.5}
+.env text{font:500 12.5px var(--mono);fill:var(--text);text-anchor:middle}
+.env.dim rect{stroke-dasharray:3 2;stroke:var(--bstrong)}
+.resp rect{fill:var(--pri)}
+.resp text{font:600 12.5px var(--mono);fill:var(--onpri);text-anchor:middle}
+.resp.e rect{fill:var(--err)}
+.door{stroke-width:5}
+.bcell{fill:var(--bg2);stroke:var(--border)}
+.bcell.hl{stroke:var(--ring);stroke-width:2.5}
+.bnum{font:12.5px var(--mono);fill:var(--text3);text-anchor:middle}
+.bcnt{font:600 14px var(--mono);fill:var(--text);text-anchor:middle}
+
+</style>
+</head>
+<body>
+<header>
+  <h1>Mini Redis 동작 시각화</h1>
+  <span class="kick">교육용 시뮬레이션 · 초안 · 기준 브랜치 6a5eab5</span>
+  <span class="kick" id="clockLbl" style="margin-left:auto">t = 0.00s</span>
+</header>
+
+<main class="app">
+  <aside class="client">
+    <section>
+      <h2>상품 입력</h2>
+      <form id="f" novalidate>
+        <label for="nm">상품명</label>
+        <input id="nm" maxlength="40" autocomplete="off" placeholder="예: 사과">
+        <div class="row">
+          <div><label for="pr">가격(원)</label><input id="pr" inputmode="numeric" placeholder="1200"></div>
+        </div>
+        <div class="formerr" id="ferr" role="alert"></div>
+        <button class="pri" type="submit" style="width:100%">보내기</button>
+      </form>
+    </section>
+    <section>
+      <h2>조회 결과</h2>
+      <div class="shop"><div class="shopbar"><i></i><i></i><i></i><span>mini-shop · 상품 목록</span></div><div id="cards"></div></div>
+    </section>
+  </aside>
+
+  <section class="mapwrap" id="mapwrap">
+    <svg id="map" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mini Redis 가로 흐름 지도">
+      <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--line)"/></marker></defs>
+      <!-- ① 클라이언트 -->
+      <circle cx="22" cy="200" r="10" fill="var(--ring)"/><text x="22" y="204.5" text-anchor="middle" style="font:600 12.5px var(--mono);fill:#fff">1</text><text class="lbl" x="38" y="205" style="font-size:14px">요청 도착</text>
+      <rect class="box" x="10" y="220" width="90" height="100"/>
+      <text class="lbl" x="55" y="262" text-anchor="middle">Client</text>
+      <text class="sub" x="55" y="282" text-anchor="middle">클라이언트</text>
+      <path class="path" d="M100 270 H118" marker-end="url(#ah)"/>
+      <!-- ② 연결 큐 (연결 받기 포함) -->
+      <circle cx="132" cy="50" r="10" fill="var(--ring)"/><text x="132" y="54.5" text-anchor="middle" style="font:600 12.5px var(--mono);fill:#fff">2</text><text class="lbl" x="148" y="55" style="font-size:14px">큐 대기</text>
+      <g class="click" id="sQueue">
+        <rect class="box" x="120" y="70" width="125" height="400"/>
+        <text class="lbl" x="132" y="94">연결 큐</text>
+        <text class="sub" x="132" y="112">FIFO · 위가 앞</text>
+        <text class="st13" x="132" y="136" id="mainSt">poll() 대기</text>
+        <text class="st13" x="132" y="440" id="qCnt">대기 0개</text>
+        <text class="st13" x="132" y="460" id="qKey">열쇠: 비어 있음</text>
+      </g>
+      <path class="path" d="M245 270 H263" marker-end="url(#ah)"/>
+      <!-- ③ 워커 풀 -->
+      <circle cx="277" cy="50" r="10" fill="var(--ring)"/><text x="277" y="54.5" text-anchor="middle" style="font:600 12.5px var(--mono);fill:#fff">3</text><text class="lbl" x="293" y="55" style="font-size:14px">워커 이동</text>
+      <g class="click" id="sPool">
+        <rect class="box2" x="265" y="70" width="255" height="400"/>
+        <text class="lbl" x="392" y="94" text-anchor="middle">Worker Pool</text>
+        <text class="sub" x="392" y="112" text-anchor="middle">8개 워커</text>
+        <text class="st13" x="290" y="440" text-anchor="middle">큐 열쇠</text><text class="st13" x="290" y="456" text-anchor="middle">대기</text>
+        <rect x="338" y="196" width="170" height="160" fill="none" stroke="var(--bstrong)" stroke-dasharray="4 4"/>
+        <text class="st13" x="423" y="372" text-anchor="middle">대기 중 (cond_wait)</text>
+      </g>
+      <path class="path" d="M520 270 H538" marker-end="url(#ah)"/>
+      <!-- ④ HTTP 처리 -->
+      <circle cx="552" cy="50" r="10" fill="var(--ring)"/><text x="552" y="54.5" text-anchor="middle" style="font:600 12.5px var(--mono);fill:#fff">4</text><text class="lbl" x="568" y="55" style="font-size:14px">처리</text>
+      <rect class="box" x="540" y="70" width="125" height="400"/>
+      <text class="lbl" x="602" y="94" text-anchor="middle">HTTP 처리</text>
+      <text class="sub" x="602" y="112" text-anchor="middle">읽기·라우팅·검증</text>
+      <path class="path" d="M665 270 H683" marker-end="url(#ah)"/>
+      <!-- ⑤ 공유 저장소 -->
+      <circle cx="697" cy="50" r="10" fill="var(--ring)"/><text x="697" y="54.5" text-anchor="middle" style="font:600 12.5px var(--mono);fill:#fff">5</text><text class="lbl" x="713" y="55" style="font-size:14px">저장소 사용</text>
+      <g class="click" id="sStore">
+        <rect class="box" x="685" y="70" width="165" height="275"/>
+        <text class="lbl" x="767" y="94" text-anchor="middle">공유 저장소</text>
+        <text class="sub" x="767" y="112" text-anchor="middle">한 번에 한 주체</text>
+        <text class="st13" x="767" y="337" text-anchor="middle" id="sKey">열쇠: 비어 있음</text>
+        <line class="door" id="door" x1="686" y1="72" x2="686" y2="343" stroke="var(--ok)"/>
+        <g id="buckets"></g>
+      </g>
+      <rect x="685" y="360" width="165" height="110" fill="none" stroke="var(--bstrong)" stroke-dasharray="4 4"/>
+      <text class="st13" x="767" y="462" text-anchor="middle">저장소 대기 중 (락 대기)</text>
+      <path class="path" d="M767 360 V347" marker-end="url(#ah)"/>
+      <path class="path" d="M850 270 H868" marker-end="url(#ah)"/>
+      <!-- ⑥ 응답 -->
+      <circle cx="882" cy="50" r="10" fill="var(--ring)"/><text x="882" y="54.5" text-anchor="middle" style="font:600 12.5px var(--mono);fill:#fff">6</text><text class="lbl" x="898" y="55" style="font-size:14px">응답</text>
+      <rect class="box" x="870" y="70" width="120" height="400"/>
+      <text class="lbl" x="930" y="94" text-anchor="middle">응답</text>
+      <text class="sub" x="930" y="112" text-anchor="middle">잠금 없이·닫기</text>
+      <!-- 응답 귀환 고리 -->
+      <path class="ret" d="M930 470 V520 H55 V322" marker-end="url(#ahg)"/>
+      <defs><marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--ok)"/></marker></defs>
+      <text class="sub" x="490" y="512" text-anchor="middle" style="fill:var(--ok)">응답이 클라이언트로 돌아가요</text>
+      <text class="st13" x="500" y="575" text-anchor="middle" id="poolSum"></text>
+      <g id="lEnv"></g>
+      <g id="lRobot"></g>
+      <g id="lResp"></g>
+    </svg>
+    <div id="detail" hidden></div>
+  </section>
+</main>
+
+<footer>
+  <div class="track">
+    <input type="range" id="slider" min="0" max="0" step="1" value="0" aria-label="단계 이동">
+    <span class="counter" id="counter">1 / 1</span>
+  </div>
+  <div class="btns">
+    <button class="ghost" id="bHome">처음으로</button>
+    <button id="bPrev">← 이전</button>
+    <button class="pri" id="bPlay">일시정지</button>
+    <button id="bNext">다음 →</button>
+    <div class="speed" role="group" aria-label="배속">
+      <button data-s="0.25">0.25×</button><button data-s="0.5">0.5×</button><button data-s="1" aria-pressed="true">1×</button><button data-s="1.5">1.5×</button>
+    </div>
+    <button class="ghost" id="bReset">초기화</button>
+    <label class="trk">추적
+      <select id="trk"><option value="">전체</option></select>
+    </label>
+  </div>
+</footer>
+
+<script>
+"use strict";
+/* ================= 시뮬레이션 코어 (DOM 없음) ================= */
+const DUR = { arrive:500, accept:500, push:350, pop:350, empty:200, read:1200, slowChunk:1500,
+  route:600, validate:500, get:700, put:900, build:500, send:600, close:300, resp:900, };
+const TICK = 50, NW = 8, QCAP = 1024;
+
+function fnv(s){ let h = 0x811c9dc5; for (const b of new TextEncoder().encode(s)) { h ^= b; h = Math.imul(h, 16777619) >>> 0; } return h; }
+
+function initState(){
+  return { t:0, cid:0, sid:0, pno:0, conns:{}, backlog:[], queue:[], fds:[],
+    main:{ st:'poll', c:null, s:0, u:0 },
+    W: Array.from({length:NW}, (_, i) => ({ id:i+1, st:'idle', c:null, s:0, u:0, k:0 })),
+    ql:{ h:null, w:[] }, sl:{ h:null, w:[] },
+    sw:{ st:'sleep', next:null, s:0, u:0, cur:0, last:null },
+    B: Array.from({length:16}, () => []),
+    subs:[], sched:[], resp:[], last:null, mark:null, markPend:false, lastProd:null,
+    ev:[{ m:'서버 시작: pthread_create()로 워커 8개를 만들었어요. 모두 빈 큐에서 기다려요.', a:null }] };
+}
+const ev = (S, m, a) => S.ev.push({ m, a: a || null });
+const setT = (S, o, d) => { o.s = S.t; o.u = S.t + d; };
+const wOf = (S, a) => S.W[+a.slice(1) - 1];
+
+function allocFd(S){ let fd = 4; while (S.fds.includes(fd)) fd++; S.fds.push(fd); return fd; }
+function freeFd(S, fd){ S.fds = S.fds.filter(x => x !== fd); }
+
+function want(S, L, a){ const lk = S[L]; if (!lk.h) { lk.h = a; grant(S, L, a); } else lk.w.push(a); }
+function rel(S, L){ const lk = S[L]; lk.h = lk.w.shift() || null; if (lk.h) grant(S, L, lk.h); }
+
+function grant(S, L, a){
+  if (L === 'ql') {
+    if (a === 'M') { S.main.st = 'push'; setT(S, S.main, DUR.push); ev(S, '메인 스레드가 큐 열쇠를 잡았어요.'); return; }
+    const w = wOf(S, a);
+    if (S.queue.length) {
+      const cid = S.queue.shift(), c = S.conns[cid];
+      c.st = 'held'; c.w = w.id; w.c = cid; w.st = 'pop'; setT(S, w, DUR.pop);
+      ev(S, `${a}가 큐 열쇠를 잡고 맨 앞 fd ${c.fd}를 가져갔어요.`, a);
+    } else { w.st = 'empty'; setT(S, w, DUR.empty); ev(S, `${a}가 큐를 다시 확인했지만 비어 있어요.`, a); }
+  } else {
+    const w = wOf(S, a), c = S.conns[w.c];
+    storeOp(S, c);
+    w.st = 'shold'; setT(S, w, c.hold || (c.method === 'GET' ? DUR.get : DUR.put));
+  }
+}
+
+function findNode(b, key, h){ return b.findIndex(n => n.h === h && n.k === key); }
+
+function storeOp(S, c){
+  const h = fnv(c.key), i = h & 15, b = S.B[i], j = findNode(b, c.key, h), a = 'W' + c.w;
+  let note;
+  if (c.method === 'GET') {
+    if (j < 0) { c.res = { code:404, body:'{"error":"not found"}' }; note = '키가 없어요 → 404'; }
+    else if (b[j].exp != null && S.t >= b[j].exp) { b.splice(j, 1); c.res = { code:404, body:'{"error":"not found"}' }; note = '만료 시각이 지나서 GET이 지우고 404 (지연 삭제)'; }
+    else { c.res = { code:200, body: JSON.stringify(b[j].v) }; note = '해시와 키가 같은 노드를 찾아 값을 복사했어요'; }
+  } else {
+    const exp = c.ttl ? S.t + c.ttl : null;
+    if (j >= 0) { b[j].v = c.val; b[j].exp = exp; note = '같은 키가 있어 값과 만료 시각을 바꿨어요'; }
+    else { b.unshift({ k:c.key, h, v:c.val, exp }); note = `새 노드를 ${i}번 버킷 맨 앞에 연결했어요`; }
+    c.res = { code:200, body:'{"ok":true}' };
+  }
+  S.last = { key:c.key, h, i, op:c.method, note, by:a };
+  ev(S, `${a}가 저장소 열쇠를 얻었어요. ${c.method} ${c.key}: ${note}.`, a);
+}
+
+
+// 아직 만료되지 않은 TTL 키가 있으면 시계를 계속 흘려요 (만료는 GET이 발견해 지워요)
+function hasTTL(S){ return S.B.some(b => b.some(n => n.exp != null && S.t < n.exp)); }
+
+function send(S, sp){
+  const id = ++S.cid;
+  S.conns[id] = { id, sub:sp.sub, method:sp.method, key:sp.key || null, path:sp.path || ('/keys/' + encodeURIComponent(sp.key)),
+    val:sp.val || null, ttl:sp.ttl || null, chunks: sp.slow ? 4 : 1, slow:!!sp.slow, hold:sp.hold || null,
+    st:'arr', s:S.t, u:S.t + DUR.arrive, got:0, parsed:false, fd:null, w:null, res:null };
+  ev(S, `클라이언트가 새 연결을 시작했어요${sp.slow ? ' (느린 요청)' : ''}.`);
+}
+
+function storeWant(S, w){
+  const a = 'W' + w.id; w.st = 'swait';
+  const holder = S.sl.h;
+  want(S, 'sl', a);
+  if (w.st === 'swait') {
+    ev(S, `${a}가 저장소 문 앞에 왔지만 열쇠를 ${holder}가 쥐고 있어 기다려요.`, a);
+    if (S.markPend && /^W/.test(holder) && S.W.some(x => x.st === 'read')) { S.mark = 'conc'; S.markPend = false; }
+  }
+}
+
+function tick(S){
+  S.t += TICK; S.ev = []; S.mark = null;
+  // 1) 예약된 클라이언트 전송
+  for (const sp of S.sched.filter(x => x.at <= S.t)) send(S, sp);
+  S.sched = S.sched.filter(x => x.at > S.t);
+  // 2) 연결 도착
+  for (const c of Object.values(S.conns)) if (c.st === 'arr' && S.t >= c.u) { c.st = 'backlog'; S.backlog.push(c.id); }
+  // 3) 메인 스레드
+  const M = S.main;
+  if (M.st === 'poll' && S.backlog.length) {
+    const c = S.conns[S.backlog.shift()]; c.fd = allocFd(S); c.st = 'acc'; M.c = c.id; M.st = 'accept'; setT(S, M, DUR.accept);
+    ev(S, `메인 스레드가 poll()에서 깨어나 accept()로 fd ${c.fd}를 받았어요.`);
+  } else if (M.st === 'accept' && S.t >= M.u) {
+    const c = S.conns[M.c];
+    if (S.queue.length >= QCAP) { freeFd(S, c.fd); delete S.conns[c.id]; M.c = null; M.st = 'poll'; ev(S, '큐가 가득 차서 방금 받은 연결을 닫았어요.'); }
+    else { c.st = 'toq'; M.st = 'qwait'; want(S, 'ql', 'M'); }
+  } else if (M.st === 'push' && S.t >= M.u) {
+    const c = S.conns[M.c]; S.queue.push(c.id); c.st = 'queued'; M.c = null; M.st = 'poll';
+    const idle = S.W.find(w => w.st === 'idle');
+    ev(S, `fd ${c.fd}를 큐 끝에 넣고 not_empty를 알렸어요.` + (idle ? ` W${idle.id}가 깨어나요.` : ' 깨울 워커가 없어 큐에 남아요.'));
+    if (idle) { idle.st = 'qwait'; S.ql.w.push('W' + idle.id); }
+    rel(S, 'ql');
+  }
+  // 4) 워커
+  for (const w of S.W) {
+    if (['idle', 'qwait', 'swait'].includes(w.st) || S.t < w.u) continue;
+    const a = 'W' + w.id, c = S.conns[w.c];
+    switch (w.st) {
+      case 'pop': w.st = 'read'; w.k = 0; setT(S, w, c.slow ? DUR.slowChunk : DUR.read); c.st = 'reading'; rel(S, 'ql');
+        ev(S, `${a}가 큐 열쇠를 반납하고 fd ${c.fd}의 HTTP 요청을 읽기 시작해요.`, a); break;
+      case 'empty': w.st = 'idle'; rel(S, 'ql'); ev(S, `${a}가 잠금을 풀고 다시 잠들어요.`, a); break;
+      case 'read':
+        w.k++; c.got = w.k;
+        if (w.k < c.chunks) { setT(S, w, DUR.slowChunk); ev(S, `${a}: 바이트 조각 ${w.k}/${c.chunks} 도착, 계속 읽어요.`, a); }
+        else { c.parsed = true; w.st = 'route'; setT(S, w, DUR.route); ev(S, `${a}가 요청을 다 읽었어요: ${c.method} ${c.path}`, a); }
+        break;
+      case 'route':
+        if (c.path === '/health') { c.res = { code:200, body:'{"status":"ok"}' }; w.st = 'build'; setT(S, w, DUR.build); ev(S, `${a}: /health는 저장소 잠금 없이 바로 응답해요.`, a); }
+        else if (c.method === 'PUT') { w.st = 'validate'; setT(S, w, DUR.validate); ev(S, `${a}: 라우터가 키 ${c.key}를 디코딩하고 PUT 핸들러를 골랐어요.`, a); }
+        else { ev(S, `${a}: 라우터가 키 ${c.key}를 디코딩하고 ${c.method} 핸들러를 골랐어요.`, a); storeWant(S, w); }
+        break;
+      case 'validate': ev(S, `${a}: PUT 본문 JSON 검증을 통과했어요 (아직 잠금 없음).`, a); storeWant(S, w); break;
+      case 'shold': w.st = 'build'; setT(S, w, DUR.build); ev(S, `${a}가 저장소 열쇠를 반납했어요.`, a); rel(S, 'sl'); break;
+      case 'build': w.st = 'send'; setT(S, w, DUR.send); ev(S, `${a}가 잠금 없이 응답 본문을 만들었어요.`, a); break;
+      case 'send': S.resp.push({ cid:c.id, code:c.res.code, s:S.t, u:S.t + DUR.resp }); c.st = 'sent';
+        w.st = 'close'; setT(S, w, DUR.close); ev(S, `${a}가 fd ${c.fd}로 ${c.res.code} 응답을 보냈어요.`, a); break;
+      case 'close': freeFd(S, c.fd); c.st = 'closed'; w.c = null; w.st = 'qwait';
+        ev(S, `${a}가 연결을 닫고 다시 큐를 확인하러 가요.`, a); want(S, 'ql', a); break;
+    }
+  }
+  // 6) 응답 도착
+  for (const r of S.resp.filter(r => S.t >= r.u)) clientGot(S, S.conns[r.cid]);
+  S.resp = S.resp.filter(r => S.t < r.u);
+}
+
+function clientGot(S, c){
+  const sub = S.subs.find(x => x.id === c.sub);
+  delete S.conns[c.id];
+  if (!sub) return;
+  sub.log.push(`${c.method} ${c.path === '/health' ? '/health' : c.key} → ${c.res.code}`);
+  if (sub.kind === 'prod') {
+    sub.done = true;
+    if (c.method === 'PUT' && c.res.code === 200) { sub.val = JSON.stringify({ name:sub.name, price:sub.price }); sub.st = 'PUT 200 · 등록됨'; }
+    else sub.st = `${c.method} ${c.res.code} · 실패`;
+  } else { sub.n--; sub.st = sub.n ? `응답 대기 ${sub.n}개` : '완료'; }
+  ev(S, `클라이언트가 ${c.res.code} 응답을 받았어요.`);
+}
+
+function isIdle(S){
+  return !Object.keys(S.conns).length && !S.sched.length && !S.resp.length && S.main.st === 'poll'
+    && S.W.every(w => w.st === 'idle') && !hasTTL(S);
+}
+
+/* 클라이언트 동작 (상태를 바꾸는 입력) */
+function doSubmit(S, name, price, ttl){
+  const key = 'product:' + (++S.pno), sub = { id:++S.sid, kind:'prod', key, name, price, ttl, log:[], st:'PUT 보냄' };
+  S.subs.push(sub); S.lastProd = { name, price };
+  send(S, { sub:sub.id, method:'PUT', key, val:{ name, price }, ttl });
+}
+function doConc(S){
+  const p = S.lastProd, sub = { id:++S.sid, kind:'conc', log:[], n:4, st:'응답 대기 4개' }, k = () => 'product:' + (++S.pno);
+  S.subs.push(sub); S.markPend = true;
+  const v = i => ({ name:`${p.name} (실험 ${i})`, price:p.price });
+  sub.keys = [k(), k(), k()];
+  S.sched.push({ at:S.t + 50, sub:sub.id, method:'PUT', key:sub.keys[0], val:v(1), slow:true },
+    { at:S.t + 200, sub:sub.id, method:'PUT', key:sub.keys[1], val:v(2), hold:2600 },
+    { at:S.t + 750, sub:sub.id, method:'PUT', key:sub.keys[2], val:v(3) },
+    { at:S.t + 1050, sub:sub.id, method:'GET', path:'/health' });
+  ev(S, '동시성 실험: 연결 4개를 예약했어요. (1) 느린 PUT (2) 저장소를 오래 쓰는 PUT (3) 열쇠가 잡힌 동안 오는 PUT (4) /health');
+}
+function doBurst(S){
+  const p = S.lastProd, sub = { id:++S.sid, kind:'burst', log:[], n:10, st:'응답 대기 10개' };
+  S.subs.push(sub);
+  for (let i = 0; i < 10; i++) S.sched.push({ at:S.t + 50 + i * 120, sub:sub.id, method:'PUT', key:'product:' + (++S.pno), val:{ name:`${p.name} #${i + 1}`, price:p.price }, slow:true });
+  ev(S, '여러 연결 실험: 10개 연결을 연달아 보내요. 워커 8개가 다 바쁘면 남은 연결은 큐에서 기다려요.');
+}
+
+/* ================= 기록·재생 ================= */
+const clone = o => JSON.parse(JSON.stringify(o));
+const BASE = 0.25; // 1× = 처음 초안 속도의 0.25배
+let S, hist, cur, clock, playing = true, speed = BASE;
+function reset(){ S = initState(); hist = [clone(S)]; cur = 0; clock = 0; }
+function record(){ hist.push(clone(S)); if (hist.length > 5000) hist.shift(); cur = hist.length - 1; }
+function atHead(){ return cur === hist.length - 1; }
+function branchHere(){ if (!atHead()) { hist = hist.slice(0, cur + 1); S = clone(hist[cur]); } S.ev = []; S.mark = null; }
+function input(fn){ branchHere(); fn(S); record(); clock = S.t; render(true); }
+function liveAdvance(target, stopOnEvent){
+  let n = 0;
+  while (S.t + TICK <= target && n++ < 2000) {
+    if (isIdle(S)) return false;
+    tick(S);
+    if (S.ev.length) { record(); if (S.mark || stopOnEvent) return true; }
+  }
+  return false;
+}
+function stepNext(){
+  if (!atHead()) { cur++; clock = hist[cur].t; return true; }
+  if (isIdle(S)) return false;
+  return liveAdvance(S.t + 30000, true);
+}
+
+/* ================= 화면 ================= */
+if (typeof document !== 'undefined') {
+const $ = id => document.getElementById(id), NS = 'http://www.w3.org/2000/svg';
+const mk = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+let sel = { panel:null, tab:'workers', w:null };
+const STK = { idle:'연결 대기', qwait:'큐 열쇠 대기', pop:'큐에서 연결 인수', empty:'큐 재확인', read:'HTTP 읽기', route:'라우팅', validate:'본문 검증',
+  swait:'저장소 열쇠 대기', shold:'저장소 사용', build:'응답 만들기', send:'응답 보내기', close:'연결 닫기' };
+
+// 로봇 만들기
+const robots = [];
+function mkRobot(label, cls){
+  const g = mk('g', { class:'robot mv ' + cls, tabindex:0, role:'button', 'aria-label':label }, $('lRobot'));
+  mk('rect', { x:-22, y:-22, width:44, height:28, class:'body' }, g);
+  mk('text', { x:0, y:-3 }, g).textContent = label;
+  mk('rect', { x:-18, y:1, width:36, height:3, class:'pbb' }, g);
+  g.pb = mk('rect', { x:-18, y:1, width:0, height:3, class:'pb' }, g);
+  return g;
+}
+for (let i = 0; i < NW; i++) {
+  const g = mkRobot('W' + (i + 1), ''); robots.push(g);
+  const pick = () => { sel.w = sel.w === i + 1 ? null : i + 1; $('trk').value = sel.w || ''; if (sel.w) openPanel('workers'); render(); };
+  g.addEventListener('click', pick); g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+  const o = document.createElement('option'); o.value = i + 1; o.textContent = 'W' + (i + 1); $('trk').appendChild(o);
+}
+
+// 버킷 셀
+const bCells = [];
+for (let i = 0; i < 16; i++) {
+  const x = 699 + (i % 4) * 35, y = 120 + Math.floor(i / 4) * 31;
+  const r = mk('rect', { x, y, width:32, height:28, class:'bcell' }, $('buckets'));
+  mk('text', { x:x + 16, y:y + 11, class:'bnum', style:'font-size:10px' }, $('buckets')).textContent = i;
+  const c = mk('text', { x:x + 16, y:y + 25, class:'bcnt', style:'font-size:13px' }, $('buckets'));
+  bCells.push({ r, c });
+}
+
+function placeAt(el, x, y){ el.style.transform = `translate(${x}px,${y}px)`; }
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let busyUntil = 0;
+const DWELL = 700;                                   // 1× 기준, 도착 후 멈춰서 보여주는 시간(ms)
+const dwell = () => DWELL / (speed / BASE);
+function holdFor(dur, noDwell){ busyUntil = Math.max(busyUntil, performance.now() + dur + (noDwell ? 0 : dwell())); }
+const isBusy = () => performance.now() < busyUntil;
+function curPos(el){
+  const m = getComputedStyle(el).transform.match(/matrix\(([^)]+)\)/);
+  if (!m) return null; const v = m[1].split(',').map(Number); return [v[4], v[5]];
+}
+function runPath(el, pts, dur, easing, noDwell){
+  const running = el.getAnimations();
+  if (running.length) { const c = curPos(el); if (c) pts = [c, ...pts.slice(1)]; }
+  running.forEach(a => a.cancel());
+  placeAt(el, ...pts[pts.length - 1]);
+  if (reduced || pts.length < 2 || dur <= 0) { holdFor(0, noDwell); return; }
+  const len = pts.slice(1).map((p, k) => Math.abs(p[0] - pts[k][0]) + Math.abs(p[1] - pts[k][1]));
+  const tot = len.reduce((a, b) => a + b, 0) || 1; let acc = 0;
+  el.animate(pts.map((p, k) => { if (k) acc += len[k - 1]; return { transform:`translate(${p[0]}px,${p[1]}px)`, offset:acc / tot }; }),
+    { duration:dur, easing:easing || 'cubic-bezier(.4,.14,.3,1)' });
+  holdFor(dur, noDwell);
+}
+function moveTo(el, to, router){
+  const from = el.getAnimations().length ? (curPos(el) || el._pos) : el._pos; el._pos = to;
+  if (!from) { placeAt(el, ...to); return; }
+  if (from[0] === to[0] && from[1] === to[1]) return;
+  const pts = router(from, to).filter((p, k, a) => !k || p[0] !== a[k - 1][0] || p[1] !== a[k - 1][1]);
+  runPath(el, pts, Math.min(2400, 600 / speed) * (1 + 0.3 * (pts.length - 2)));
+}
+const POOL_R = 530, BOTTOM = 495, QCOL = 290;
+// 로봇 길 찾기: 꺾이는 점만 쓰는 가로·세로 경로
+function robotRoute(a, b){
+  if (a[0] >= POOL_R && b[0] < POOL_R)                       // 오른쪽에서 워커 풀로 돌아올 때: 아래 통로 → 왼쪽 세로줄 → 위로
+    return [a, [a[0], BOTTOM], [QCOL, BOTTOM], [QCOL, b[1]], b];
+  if (a[0] < POOL_R && b[0] < POOL_R) {                      // 워커 풀 안
+    if (a[1] > 470) return [a, [QCOL, a[1]], [QCOL, b[1]], b];
+    if (a[0] === QCOL) return [a, [QCOL, b[1]], b];
+    if (b[1] === MEET[1]) return [a, [a[0], b[1]], b];       // 만남 자리로는 위로 올라간 뒤 옆으로
+    return [a, [b[0], a[1]], b];                             // 만남 자리에서 대기 칸으로는 옆으로 간 뒤 아래로
+  }
+  if (a[0] < POOL_R) return [a, [a[0], MEET[1]], [b[0], MEET[1]], b];  // 풀 → HTTP: 만남 높이로 오른쪽
+  if (a[0] < 685 && b[0] > 850) return [a, [a[0], BOTTOM], [b[0], BOTTOM], b];  // HTTP → 응답(저장소 안 거침): 아래 통로
+  if (b[0] === 767 && b[1] === 292) return [a, [a[0], b[1]], b];       // 저장소 안으로: 세로로 맞춘 뒤 들어가기 (버킷 칸 피함)
+  if (b[1] >= 380 || a[1] >= 380) return [a, [a[0], b[1]], b];         // 락 대기 구역 드나들기: 세로 먼저
+  return [a, [b[0], a[1]], b];                                         // 나머지: 가로 먼저
+}
+function envRoute(a, b){
+  if (a[0] < 250 && b[0] < 250) return [a, [b[0], a[1]], b];            // 클라이언트·큐 안
+  if (a[0] < 250) return [a, [a[0], b[1]], b];                          // 큐 → 만남 자리: 위로 간 뒤 오른쪽
+  return robotRoute([a[0], a[1] - 20], [b[0], b[1] - 20]).map(p => [p[0], p[1] + 20]);
+}
+function idxIn(S, sts, w){ return S.W.filter(x => sts.includes(x.st)).indexOf(w); }
+const MID = 272, OFF = [0, -44, 44, -88, 88, -132, 132, 176];
+const stackY = k => MID + OFF[Math.max(0, k)];
+const slot = (cx, k) => [cx + (k >= 6 ? 50 : 0), 140 + (k % 6) * 58];   // 한 칸에 6개까지 세로로, 그 이상은 옆 줄
+const MEET = [392, 140];   // '8개 워커' 글자 바로 아래: 연결과 워커가 만나는 자리
+function robotPos(S, w){
+  const i = w.id - 1, a = 'W' + w.id;
+  switch (w.st) {
+    case 'idle': return [366 + (i % 3) * 58, 224 + Math.floor(i / 3) * 56];
+    case 'pop': case 'empty': return MEET;
+    case 'qwait': return [290, 184 + S.ql.w.indexOf(a) * 56];
+    case 'read': case 'route': case 'validate': return slot(602, idxIn(S, ['read', 'route', 'validate'], w));
+    case 'swait': { const k = S.sl.w.indexOf(a); return [713 + (k % 3) * 56, 388 + Math.floor(k / 3) * 52]; }
+    case 'shold': return [767, 292];
+    default: return slot(930, idxIn(S, ['build', 'send', 'close'], w));
+  }
+}
+function envPos(S, c){
+  const inQ = ['queued', 'toq', 'acc', 'backlog', 'arr'];
+  if (inQ.includes(c.st)) {
+    const order = [...S.queue.map(id => S.conns[id]), ...Object.values(S.conns).filter(x => x.st === 'toq' || x.st === 'acc'),
+      ...S.backlog.map(id => S.conns[id]), ...Object.values(S.conns).filter(x => x.st === 'arr')].filter(Boolean);
+    const k = order.findIndex(x => x.id === c.id);
+    return k >= 0 && k < 8 ? [182, 160 + k * 34] : null;
+  }
+  if (c.w) { const [x, y] = robotPos(S, S.W[c.w - 1]); return [x, y + 20]; }
+  return null;
+}
+function syncLayer(layer, items, makeEl, update){
+  const seen = new Set();
+  for (const it of items) {
+    let el = layer.querySelector(`[data-id="${it.id}"]`);
+    if (!el) { el = makeEl(it); el.dataset.id = it.id; layer.appendChild(el); if (it.from) { el._pos = it.from; placeAt(el, ...it.from); } }
+    update(el, it); seen.add(String(it.id));
+  }
+  for (const el of [...layer.children]) if (!seen.has(el.dataset.id)) el.remove();
+}
+
+let lastCur = -1;
+function render(force){
+  const V = hist[cur];
+  if (force || cur !== lastCur) { lastCur = cur; renderDiscrete(V); }
+  // 진행 막대 (연속)
+  const vt = Math.min(clock, cur < hist.length - 1 ? hist[cur + 1].t : Infinity);
+  V.W.forEach((w, i) => { const p = w.u > w.s && !['idle', 'qwait', 'swait'].includes(w.st) ? Math.max(0, Math.min(1, (vt - w.s) / (w.u - w.s))) : 0; robots[i].pb.setAttribute('width', 38 * p); });
+  $('clockLbl').textContent = `t = ${(Math.max(vt, V.t) / 1000).toFixed(2)}s` + (atHead() && isIdle(S) ? ' · 유휴(시계 멈춤)' : '');
+}
+
+function renderDiscrete(V){
+  // 로봇
+  V.W.forEach((w, i) => {
+    moveTo(robots[i], robotPos(V, w), robotRoute);
+    robots[i].classList.toggle('sel', sel.w === w.id);
+    robots[i].classList.toggle('dim', sel.w != null && sel.w !== w.id);
+    robots[i].setAttribute('aria-label', `W${w.id}: ${STK[w.st]}`);
+  });
+  // 연결 봉투
+  const envs = Object.values(V.conns).filter(c => !['sent', 'closed'].includes(c.st)).map(c => ({ id:c.id, c, pos:envPos(V, c), from:[55, 250] })).filter(x => x.pos);
+  syncLayer($('lEnv'), envs, () => { const g = mk('g', { class:'env mv' }); mk('rect', { x:-28, y:-7, width:56, height:15 }, g); mk('text', { x:0, y:4.5 }, g); return g; },
+    (el, it) => { moveTo(el, it.pos, envRoute); el.querySelector('text').textContent = it.c.fd == null ? '연결' : (it.c.parsed ? `${it.c.fd}·${it.c.method}` : `fd ${it.c.fd}`);
+      el.classList.toggle('dim', sel.w != null && it.c.w !== sel.w); });
+  // 응답 토큰
+  const rs = V.resp.map(r => ({ id:'r' + r.cid, r }));
+  syncLayer($('lResp'), rs, it => { const g = mk('g', { class:'resp' + (it.r.code >= 400 ? ' e' : '') }); mk('rect', { x:-20, y:-9, width:40, height:18 }, g); mk('text', { x:0, y:4.5 }, g).textContent = it.r.code; return g; },
+    (el, it) => { if (el._done) return; el._done = true; runPath(el, [[930, 470], [930, 520], [55, 520], [55, 300]], Math.max(0, it.r.u - V.t) / speed, 'linear', true); });
+  // 상태 글자
+  $('mainSt').textContent = { poll:'poll() 대기', accept:'accept() 중', qwait:'큐 열쇠 대기', push:'큐에 넣는 중' }[V.main.st];
+  $('qKey').textContent = '열쇠: ' + (V.ql.h ? (V.ql.h === 'M' ? '메인 스레드' : V.ql.h) : '비어 있음') + (V.ql.w.length ? ` · 대기 ${V.ql.w.join(', ')}` : '');
+  $('qCnt').textContent = `대기 ${V.queue.length}개` + (V.queue.length > 7 ? ` (+${V.queue.length - 7})` : '');
+  $('sKey').textContent = '열쇠: ' + (V.sl.h || '비어 있음');
+  { const n = st => V.W.filter(w => st.includes(w.st)).length;
+    $('poolSum').textContent = `워커 상태 · 대기 ${n(['idle'])} · 큐 접근 ${n(['qwait', 'pop', 'empty'])} · 처리 ${n(['read', 'route', 'validate'])} · 저장소 대기 ${n(['swait'])} · 저장소 사용 ${n(['shold'])} · 응답 ${n(['build', 'send', 'close'])}`; }
+  $('door').setAttribute('stroke', V.sl.h ? 'var(--err)' : 'var(--ok)');
+  V.B.forEach((b, i) => { bCells[i].c.textContent = b.length || ''; bCells[i].r.classList.toggle('hl', !!V.last && V.last.i === i); });
+  $('counter').textContent = `${cur + 1} / ${hist.length}`;
+  $('slider').max = hist.length - 1; $('slider').value = cur;
+  $('bPrev').disabled = cur === 0;
+  $('bPlay').textContent = playing ? '일시정지' : '재생';
+  renderCards(V); renderPanel(V);
+}
+
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c])); }
+function renderCards(V){
+  const subs = V.subs.filter(s => s.kind === 'prod');
+  if (!subs.length) { $('cards').innerHTML = '<div class="empty">아직 진열된 상품이 없어요.<br>상품을 보내면 등록된 결과(PUT 200)가 여기 보여요.</div>'; return; }
+  $('cards').innerHTML = '<div class="grid">' + subs.slice().reverse().map(s => {
+    let item = null; try { item = s.val ? JSON.parse(s.val) : null; } catch (e) {}
+    if (item) return `<div class="prod"><div class="img">📦</div><div class="bd"><span class="nm">${esc(item.name)}</span><span class="pc">${Number(item.price).toLocaleString('ko-KR')}원</span><span class="mt">${esc(s.key)} · PUT 200 · 등록됨</span></div></div>`;
+    if (s.done) return `<div class="prod miss"><div class="img">✕</div><div class="bd"><span class="nm">상품을 찾을 수 없어요</span><span class="mt">${esc(s.key)} · 등록 실패</span></div></div>`;
+    return `<div class="prod wait"><div class="img">⋯</div><div class="bd"><span class="nm">${esc(s.name)}</span><span class="pc">등록 중</span><span class="mt">${esc(s.key)} · ${esc(s.st)}</span></div></div>`;
+  }).join('') + '</div>';
+}
+
+function openPanel(tab){ sel.panel = true; sel.tab = tab; $('detail').hidden = false; $('mapwrap').classList.add('open'); render(true); }
+function closePanel(){ sel.panel = null; $('detail').hidden = true; $('mapwrap').classList.remove('open'); }
+function renderPanel(V){
+  if (!sel.panel) return;
+  const tabs = `<div class="tabs" role="tablist"><button data-tab="workers" aria-selected="${sel.tab === 'workers'}">워커 풀</button><button data-tab="store" aria-selected="${sel.tab === 'store'}">공유 저장소</button></div>`;
+  let body = '';
+  if (sel.tab === 'workers') {
+    const w = V.W[(sel.w || 1) - 1], c = w.c ? V.conns[w.c] : null;
+    const groups = [['연결 대기', ['idle']], ['큐 접근', ['qwait', 'pop', 'empty']], ['HTTP 읽기', ['read']], ['라우팅·검증', ['route', 'validate']], ['저장소 앞·안', ['swait', 'shold']], ['응답·닫기', ['build', 'send', 'close']]];
+    body = '<div class="wl">' + V.W.map(x => { const cc = x.c ? V.conns[x.c] : null;
+      return `<div class="${x.id === w.id ? 'on' : ''}" data-w="${x.id}"><span class="mono">W${x.id}</span><span>${STK[x.st]}</span><span class="mono">${cc ? 'fd ' + cc.fd : ''}</span></div>`; }).join('') + '</div>'
+      + `<b>W${w.id}의 상태</b>${sel.w ? '' : ' <span class="note" style="border:0;padding:0">(로봇을 누르면 바뀌어요)</span>'}`
+      + '<div class="chain">' + groups.map(([n, ss], i) => `${i ? '<i>→</i>' : ''}<span class="${ss.includes(w.st) ? 'cur' : ''}">${n}</span>`).join('') + '<i>↺ 큐 확인</i></div>'
+      + (c ? `<div class="calc">fd ${c.fd} · ${c.parsed ? esc(c.method + ' ' + c.path) : '아직 메서드를 몰라요 (읽기 전)'}${c.slow ? '<br>느린 요청: 조각 ' + c.got + '/' + c.chunks : ''}</div>` : '')
+      + '<p class="note">워커 8개는 서버 시작 때 pthread_create()로 만들어져요. 빈 큐에서는 잠금을 풀고 기다리고, 깨어나면 다시 잠근 뒤 큐를 재확인해요. 로봇의 이동은 스레드 상태 변화를 비유한 것이고, 어느 워커가 먼저 깨어나는지는 가능한 스케줄의 한 예예요.</p>';
+  } else {
+    const L = V.last;
+    body = `<div class="calc">열쇠 보유: ${V.sl.h || '없음'}<br>대기: ${V.sl.w.join(', ') || '없음'}</div>`
+      + (L ? `<b>최근 작업 · ${L.by}</b><div class="calc">${L.op} ${esc(L.key)}<br>FNV-1a("${esc(L.key)}") = 0x${L.h.toString(16).padStart(8, '0')}<br>hash &amp; (16 - 1) = ${L.i}<br>${esc(L.note)}</div>` : '<p class="note">아직 저장소 작업이 없어요.</p>')
+      + '<b>버킷</b>' + V.B.map((b, i) => (b.length || (L && L.i === i)) ? `<div class="bk ${L && L.i === i ? 'hl' : ''}"><span class="mono">[${i}]</span><span>${b.length ? b.map(n => `<span class="node ${L && L.key === n.k ? 'hit' : ''} ${n.exp != null && V.t >= n.exp ? 'exp' : ''}">${esc(n.k)}${n.exp != null ? ' · ' + Math.max(0, (n.exp - V.t) / 1000).toFixed(1) + 's' : ''}</span>`).join('→') : '<span class="note" style="border:0;padding:0">비어 있음</span>'}</span></div>` : '').join('')
+      + `<p class="note" style="margin-top:10px">새 키는 버킷 맨 앞에 연결해요. 같은 버킷 안에서는 해시와 실제 키를 비교해 찾아요. TTL은 now ≥ expires_at이면 만료예요. 이 화면에서는 정리 스레드를 빼서, 만료된 키는 GET이 발견할 때 지우고 404를 돌려줘요. 16버킷 고정으로 그려요.</p>`;
+  }
+  $('detail').innerHTML = `<div class="dhead"><h3>상세</h3><button class="ghost" id="dClose">닫기 ✕</button></div>` + tabs + body;
+  $('dClose').onclick = closePanel;
+  $('detail').querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { sel.tab = b.dataset.tab; render(true); });
+  $('detail').querySelectorAll('[data-w]').forEach(d => d.onclick = () => { sel.w = +d.dataset.w; $('trk').value = sel.w; render(true); });
+}
+
+/* 입력 연결 */
+$('f').addEventListener('submit', e => {
+  e.preventDefault();
+  const name = $('nm').value.trim(), pr = $('pr').value.trim();
+  let err = '';
+  if (!name) err = '상품명을 적어 주세요.';
+  else if (!/^\d{1,9}$/.test(pr)) err = '가격은 0 이상의 정수로 적어 주세요.';
+  $('ferr').textContent = err ? err + ' 연결은 만들지 않았어요.' : '';
+  if (err) return;
+  input(s => doSubmit(s, name, +pr, null));
+  $('nm').value = ''; $('pr').value = '';
+});
+$('bPlay').onclick = () => { playing = !playing; if (playing) clock = hist[cur].t; render(true); };
+$('bNext').onclick = () => { if (isBusy()) return; playing = false; if (stepNext()) render(true); };
+$('bPrev').onclick = () => { playing = false; if (cur > 0) { cur--; clock = hist[cur].t; } render(true); };
+$('bHome').onclick = () => { playing = false; cur = 0; clock = hist[0].t; render(true); };
+$('bReset').onclick = () => { reset(); playing = true; $('ferr').textContent = ''; render(true); };
+$('slider').oninput = e => { playing = false; cur = +e.target.value; clock = hist[cur].t; render(true); };
+document.querySelectorAll('.speed button').forEach(b => b.onclick = () => { speed = BASE * b.dataset.s; document.querySelectorAll('.speed button').forEach(x => x.setAttribute('aria-pressed', x === b)); render(true); });
+$('trk').onchange = e => { sel.w = e.target.value ? +e.target.value : null; render(true); };
+$('sPool').addEventListener('click', () => openPanel('workers'));
+$('sStore').addEventListener('click', () => openPanel('store'));
+document.addEventListener('keydown', e => {
+  if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName) && e.target.id !== 'slider') return;
+  if (e.key === 'ArrowRight') { e.preventDefault(); $('bNext').click(); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); $('bPrev').click(); }
+});
+
+/* 메인 루프 */
+let lastTs = performance.now();
+function loop(ts){
+  const dt = Math.min(100, ts - lastTs); lastTs = ts;
+  const busy = isBusy();
+  if (playing && !busy) {
+    if (cur < hist.length - 1) {                       // 기록 다시 보기: 다음 단계까지 시간이 흐르면 한 단계만
+      clock = Math.max(clock, hist[cur].t) + dt * speed;
+      if (hist[cur + 1].t <= clock) { cur++; clock = hist[cur].t; if (hist[cur].mark) playing = false; }
+    } else if (isIdle(S)) clock = S.t;
+    else {                                             // 새로 진행: 첫 이벤트에서 멈추고 이동이 끝날 때까지 기다림
+      if (liveAdvance(S.t + 30000, true)) clock = S.t;
+    }
+  }
+  render(false);
+  $('bNext').disabled = busy;
+  requestAnimationFrame(loop);
+}
+globalThis.render = render;
+reset(); render(true); requestAnimationFrame(loop);
+}
+if (typeof module !== 'undefined') module.exports = { initState, tick, doSubmit, doConc, doBurst, isIdle, fnv };
+</script>
+</body>
+</html>

@@ -30,6 +30,7 @@ python3 tests/api/test_api.py http://127.0.0.1:6380       # 공통 기능·동�
 python3 tests/api/test_api_edge.py http://127.0.0.1:6380  # 경계값·분할 요청·정리 중 재저장 (JK)
 python3 tests/api/test_api_basic.py 127.0.0.1:6380        # 기본 흐름·검증 (EA)
 python3 tests/api/test_concurrency.py 127.0.0.1:6380      # 동시성 15.3 (EA)
+python3 tests/api/test_page.py 127.0.0.1:6380             # 시각화 화면 (GET /)
 ```
 
 ## HTTP 사용 예
@@ -55,6 +56,19 @@ curl -sS 'http://127.0.0.1:6380/stats'
 | 미니 레디스 | 6380 |
 | 샘플 API | 3000 |
 
+## 시각화 화면
+
+서버를 실행한 뒤 브라우저에서 `http://localhost:6380/`를 열면 요청이 연결 큐, 워커, 공유 저장소를 거쳐 응답으로 돌아가는 과정을 볼 수 있다.
+
+```bash
+make run          # 서버 실행 (기본 포트 6380)
+# 브라우저에서 http://localhost:6380/ 열기
+```
+
+- 화면 파일은 `src/server/visualization.html`이다. 빌드할 때 C 배열로 바뀌어 실행 파일 안에 들어간다. 그래서 서버를 어느 폴더에서 실행해도 뜬다. 화면을 고쳤다면 `make`를 다시 하면 된다.
+- 이 화면은 실제 서버와 통신하지 않는 시뮬레이션이다. 입력한 상품은 서버에 저장되지 않고, 요청 한 개가 지나가는 흐름만 보여 준다. 해시 칸 수(16)와 해시 함수(FNV-1a)는 설명을 위한 값이라 서버 구현과 다를 수 있다.
+- `GET /`만 HTML(`text/html`)을 돌려준다. 나머지 경로의 응답은 모두 JSON이다.
+
 ## 폴더 구성
 
 | 위치 | 내용 |
@@ -77,6 +91,10 @@ curl -sS 'http://127.0.0.1:6380/stats'
 | `src/server/json.h / .c` | 요청 JSON 읽기(중복 필드·정수 판정)와 응답 JSON 쓰기. demo·client도 같이 쓴다 |
 | `src/server/tcp_server.h / .c` | 연결 받기와 워커 스레드 풀, SIGINT·SIGTERM 종료. demo도 같이 쓴다 |
 | `src/client/mini_redis_client.h / .c` | 미니 레디스 HTTP 클라이언트 (협약 11.6 선택 모듈) |
+| `src/server/page.h / .c` | 시각화 화면을 `GET /`로 내려 주는 모듈 |
+| `src/server/visualization.html` | 시각화 화면 원본 (요청이 큐·워커·저장소를 지나는 과정) |
+| `src/server/embed_html.py` | 빌드할 때 HTML을 C 배열(`build/visualization_data.c`)로 바꾸는 스크립트 |
+| `tests/api/test_page.py` | `GET /` 화면 응답 테스트 |
 | `tests/store/test_hash_table.c` | 해시 테이블 전용 테스트 (같은 칸 충돌, rehash 경계) |
 | `tests/store/test_store_basic.c` | store 기본 시나리오 단위 테스트 (EA) |
 | `tests/store/test_store_edge_cases.c` | 공개 함수 경계값·잘못된 입력·만료 항목 1621검사 (JK) |

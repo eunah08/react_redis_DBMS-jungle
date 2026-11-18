@@ -34,8 +34,9 @@ typedef enum {
 typedef struct {
     int status_code;
     const char *extra_headers;  /* "X-Cache: HIT\r\n"처럼 줄바꿈까지 포함. 없으면 NULL */
-    char *body;                 /* JSON 본문. 해제는 http_response_destroy */
+    char *body;                 /* 본문. 기본은 JSON. 해제는 http_response_destroy */
     size_t body_len;
+    const char *content_type;   /* 정적 문자열. NULL이면 "application/json; charset=utf-8" */
 } http_response_t;
 
 typedef enum {

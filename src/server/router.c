@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "api_errors.h"
+#include "page.h"
 
 /*
  * 필수 엔드포인트 (협약 11.1)
@@ -15,6 +16,8 @@
  * GET    /keys/{key}/ttl
  * POST   /invalidate
  * GET    /stats
+ * 시각화 화면 (JSON이 아닌 HTML)
+ * GET    /
  * 선택 엔드포인트 (협약 11.2)
  * GET    /keys/{key}/exists
  * GET    /health
@@ -29,7 +32,8 @@ typedef enum {
     ROUTE_KEY_EXISTS,
     ROUTE_INVALIDATE,
     ROUTE_STATS,
-    ROUTE_HEALTH
+    ROUTE_HEALTH,
+    ROUTE_PAGE
 } route_t;
 
 /* 경로에서 찾은 경로 종류와, 키가 있다면 인코딩된 키의 위치 */
@@ -71,7 +75,9 @@ static route_match_t match_route(const char *path) {
     if (path_len >= keys_prefix_len && memcmp(path, KEYS_PREFIX, keys_prefix_len) == 0) {
         return match_key_route(path + keys_prefix_len, path_len - keys_prefix_len);
     }
-    if (is_same_text(path, path_len, "/invalidate")) {
+    if (is_same_text(path, path_len, "/")) {
+        match.route = ROUTE_PAGE;
+    } else if (is_same_text(path, path_len, "/invalidate")) {
         match.route = ROUTE_INVALIDATE;
     } else if (is_same_text(path, path_len, "/stats")) {
         match.route = ROUTE_STATS;
@@ -91,7 +97,8 @@ static bool is_method_allowed(route_t route, const char *method) {
     case ROUTE_INVALIDATE: return strcmp(method, "POST") == 0;
     case ROUTE_KEY_EXISTS:
     case ROUTE_STATS:
-    case ROUTE_HEALTH: return is_get;
+    case ROUTE_HEALTH:
+    case ROUTE_PAGE: return is_get;
     case ROUTE_NONE: break;
     }
     return false;
@@ -162,6 +169,8 @@ void router_handle_request(const server_context_t *context, const http_request_t
         handlers_get_stats(context, out_response);
     } else if (match.route == ROUTE_HEALTH) {
         handlers_get_health(out_response);
+    } else if (match.route == ROUTE_PAGE) {
+        page_write_response(out_response);
     } else if (!decode_key(&match, &key, &key_error)) {
         api_errors_write(key_error, "router_handle_request", out_response);
     } else {

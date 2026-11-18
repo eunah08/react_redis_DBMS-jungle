@@ -36,7 +36,7 @@ static api_error_id_t to_read_error(http_read_status_t status) {
 /* 워커 스레드에서 연결 하나를 처리한다 : 읽기 → 라우팅 → 쓰기 → 닫기 */
 static void handle_connection(int client_fd, void *context) {
     http_request_t request;
-    http_response_t response = {0, NULL, NULL, 0};
+    http_response_t response = {0, NULL, NULL, 0, NULL};
     http_read_status_t status = http_read_request(client_fd, &request);
 
     if (status == HTTP_READ_CLOSED) {
