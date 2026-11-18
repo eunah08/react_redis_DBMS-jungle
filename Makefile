@@ -11,8 +11,11 @@ HEADERS     = $(wildcard src/*/*.h)
 STORE_SRCS  = src/store/store.c src/store/hash_table.c src/store/clock.c
 # store를 모르는 공용 모듈 : HTTP 읽기·쓰기, JSON, 연결 받기와 워커 풀
 HTTP_SRCS   = src/server/http.c src/server/json.c src/server/tcp_server.c
+# 시각화 화면은 빌드할 때 C 배열로 바꿔 실행 파일에 넣는다 (src/server/page.h)
+PAGE_DATA_SRC = $(BUILD_DIR)/visualization_data.c
 SERVER_SRCS = src/server/main.c src/server/router.c src/server/handlers.c \
-              src/server/api_errors.c src/server/sweeper.c $(HTTP_SRCS)
+              src/server/api_errors.c src/server/sweeper.c src/server/page.c $(PAGE_DATA_SRC) \
+              $(HTTP_SRCS)
 SERVER_LIB_SRCS = $(filter-out src/server/main.c,$(SERVER_SRCS))
 CLIENT_SRCS = src/client/mini_redis_client.c
 DEMO_SRCS   = src/demo/sample_api.c src/demo/slow_source.c $(CLIENT_SRCS) $(HTTP_SRCS)
@@ -37,6 +40,9 @@ all: $(SERVER_BIN) $(DEMO_BIN)
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
+
+$(PAGE_DATA_SRC): src/server/visualization.html src/server/embed_html.py | $(BUILD_DIR)
+	$(PYTHON) src/server/embed_html.py $< $@
 
 $(SERVER_BIN): $(STORE_SRCS) $(SERVER_SRCS) $(HEADERS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^) $(LDFLAGS)
@@ -82,6 +88,7 @@ test-api: $(SERVER_BIN)
 	$(PYTHON) tests/api/test_api_edge.py http://127.0.0.1:$(API_TEST_PORT) || test_status=1; \
 	$(PYTHON) tests/api/test_api_basic.py 127.0.0.1:$(API_TEST_PORT) || test_status=1; \
 	$(PYTHON) tests/api/test_concurrency.py 127.0.0.1:$(API_TEST_PORT) || test_status=1; \
+	$(PYTHON) tests/api/test_page.py 127.0.0.1:$(API_TEST_PORT) || test_status=1; \
 	kill -TERM $$server_pid; wait $$server_pid; server_status=$$?; \
 	echo "서버 종료 코드 : $$server_status"; \
 	[ $$test_status -eq 0 ] && [ $$server_status -eq 0 ]

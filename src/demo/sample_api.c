@@ -262,7 +262,7 @@ static void route_request(const demo_context_t *context, const http_request_t *r
 
 static void handle_connection(int client_fd, void *context) {
     http_request_t request;
-    http_response_t response = {0, NULL, NULL, 0};
+    http_response_t response = {0, NULL, NULL, 0, NULL};
     http_read_status_t status = http_read_request(client_fd, &request);
 
     if (status == HTTP_READ_CLOSED) {
