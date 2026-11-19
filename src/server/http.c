@@ -315,14 +315,16 @@ static bool send_all(int fd, const char *data, size_t data_len) {
 /* 상태 줄 + 공통 헤더 + 추가 헤더 + 빈 줄. 반환 : 길이, 버퍼가 모자라면 -1 */
 static int format_header(const http_response_t *response, char *header, size_t header_bytes) {
     const char *extra_headers = response->extra_headers != NULL ? response->extra_headers : "";
+    const char *content_type =
+        response->content_type != NULL ? response->content_type : "application/json; charset=utf-8";
     int header_len = snprintf(header, header_bytes,
                               "HTTP/1.1 %d %s\r\n"
-                              "Content-Type: application/json; charset=utf-8\r\n"
+                              "Content-Type: %s\r\n"
                               "Content-Length: %zu\r\n"
                               "Connection: close\r\n%s\r\n",
                               response->status_code,
-                              http_find_status_text(response->status_code), response->body_len,
-                              extra_headers);
+                              http_find_status_text(response->status_code), content_type,
+                              response->body_len, extra_headers);
 
     return (header_len < 0 || (size_t)header_len >= header_bytes) ? -1 : header_len;
 }
