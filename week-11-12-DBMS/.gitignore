@@ -1,0 +1,7 @@
+target/
+data/*
+!data/.gitkeep
+!data/*.schema
+*.class
+.idea/
+.vscode/
